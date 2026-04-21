@@ -1,0 +1,53 @@
+# Node.js dependencies and build artifacts
+**/node_modules/
+**/dist/
+**/build/
+**/.turbo/
+
+# Logs
+**/logs/
+**/*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Coverage and test output
+**/coverage/
+**/.nyc_output/
+
+# Runtime/temp files
+**/.temp/
+**/.tmp/
+**/tmp/
+**/pids/
+**/*.pid
+**/*.pid.lock
+**/*.seed
+
+# Environment files
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+
+# Docker and local overrides
+docker-compose.override.yml
+
+# Misc diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json

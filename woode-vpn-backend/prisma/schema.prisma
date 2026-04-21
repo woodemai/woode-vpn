@@ -1,0 +1,51 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+model User {
+  id            Int            @id @default(autoincrement())
+  externalId    String?        @unique
+  email         String?        @unique
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+  vpnProfile    VpnProfile?
+}
+
+model Subscription {
+  id          Int                @id @default(autoincrement())
+  userId      Int
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      SubscriptionStatus @default(ACTIVE)
+  startsAt    DateTime
+  endsAt      DateTime
+  paymentId   String?
+  amountCents Int?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([userId, status])
+}
+
+model VpnProfile {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionToken String   @unique
+  configs           Json?
+  clientMappings    Json?
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

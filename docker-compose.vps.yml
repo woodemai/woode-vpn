@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: woode-vpn-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-woode_vpn}
+      POSTGRES_USER: ${POSTGRES_USER:-woode}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-woode_password}
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-woode} -d ${POSTGRES_DB:-woode_vpn}" ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  app:
+    build:
+      context: ./woode-vpn-backend
+      dockerfile: Dockerfile
+    container_name: woode-vpn-app
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-woode}:${POSTGRES_PASSWORD:-woode_password}@postgres:5432/${POSTGRES_DB:-woode_vpn}?schema=public
+      NODE_ENV: production
+      PORT: ${PORT:-3000}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://your-domain.com}
+      APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
+      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-123456}
+      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-test_xxx_or_live_xxx}
+      XUI_SERVERS_JSON: ${XUI_SERVERS_JSON:-[{"id":"de-1","country":"DE","baseUrl":"https://de-panel.example.com","username":"admin","password":"password","publicHost":"de-vpn.example.com","inboundIds":[1],"enabled":true},{"id":"nl-1","country":"NL","baseUrl":"https://nl-panel.example.com","username":"admin","password":"password","publicHost":"nl-vpn.example.com","inboundIds":[2],"enabled":true}]}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\"" ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    stop_grace_period: 20s
+    networks:
+      - backend
+
+  telegram-bot:
+    build:
+      context: ./woode-vpn-telegram-bot
+      dockerfile: Dockerfile
+    container_name: woode-vpn-telegram-bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://app:3000}
+      BUY_DEFAULT_MONTHS: ${BUY_DEFAULT_MONTHS:-1}
+      BUY_DEFAULT_COUNTRY: ${BUY_DEFAULT_COUNTRY:-NL}
+      NODE_ENV: production
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: woode-vpn-caddy
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./woode-vpn-backend/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
+
+
+networks:
+  backend:
+    driver: bridge
