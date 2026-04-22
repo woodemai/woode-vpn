@@ -59,24 +59,23 @@ function postActionKeyboard(subscriptionUrl?: string) {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
   if (subscriptionUrl) {
-    rows.push([Markup.button.callback('Как подключить в Happ', 'ACTION_HAPP_HELP')]);
-    rows.push([Markup.button.callback('QR Код', 'ACTION_QR')]);
+    rows.push([Markup.button.callback('❔ подключить в Happ', 'ACTION_HAPP_HELP')]);
+    rows.push([Markup.button.callback('🔲 QR Код', 'ACTION_QR')]);
   }
 
-  rows.push([Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')]);
-  rows.push([Markup.button.callback('Назад к меню', 'MENU_MAIN')]);
+  rows.push([Markup.button.callback('🔙 Назад к меню', 'MENU_MAIN')]);
 
   return Markup.inlineKeyboard(rows);
 }
 
 function mainMenuKeyboard(hasSubscription: boolean) {
-  const subscriptionButton = hasSubscription
+  const subscriptionButton = true
     ? Markup.button.callback('💳 Купить/Продлить подписку', 'MENU_BUY')
     : Markup.button.callback('🎁 Пробная подписка на 2 дня', 'TRIAL');
 
   return Markup.inlineKeyboard([
     [subscriptionButton],
-    [Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')],
+    [Markup.button.callback('⚙️ Моя подписка', 'ACTION_CONFIG')],
   ]);
 }
 
