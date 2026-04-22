@@ -37,7 +37,7 @@ type CallbackData =
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
-  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
+  return `happ://add/${subscriptionUrl}`;
 }
 
 function postActionKeyboard(subscriptionUrl?: string) {
