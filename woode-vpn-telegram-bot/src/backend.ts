@@ -20,13 +20,16 @@ export interface UserProfileResponse {
 
 interface BackendClientOptions {
   baseUrl: string;
+  requestTimeoutMs?: number;
 }
 
 export class BackendClient {
   private readonly baseUrl: string;
+  private readonly requestTimeoutMs: number;
 
   constructor(options: BackendClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
+    this.requestTimeoutMs = options.requestTimeoutMs ?? 10000;
   }
 
   async registerUser(telegramUserId: number): Promise<RegisterUserResponse> {
@@ -59,13 +62,20 @@ export class BackendClient {
       body?: unknown;
     },
   ): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: options.method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method: options.method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined,
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown network error';
+      throw new Error(`Backend request timeout or network error: ${message}`);
+    }
 
     if (!response.ok) {
       const text = await response.text();

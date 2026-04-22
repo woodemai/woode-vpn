@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, SubscriptionStatus, VpnProfile } from '@prisma/client';
@@ -19,6 +20,8 @@ interface ClientMapping {
 
 @Injectable()
 export class VpnService {
+  private readonly logger = new Logger(VpnService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly xuiService: XuiService,
@@ -31,6 +34,11 @@ export class VpnService {
     subscriptionText: string;
     subscriptionUrl: string;
   }> {
+    const startedAt = Date.now();
+    this.logger.log(
+      `provisionForUser started: userId=${userId}, country=${country ?? 'all'}`,
+    );
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('User not found');
@@ -56,15 +64,22 @@ export class VpnService {
       throw new BadRequestException('No x-ui servers configured');
     }
 
+    this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
+
     const configs: string[] = [];
     const mappings: ClientMapping[] = [];
 
     for (const server of servers) {
+      const serverStartedAt = Date.now();
       const inbounds = await this.xuiService.getInbounds(server);
       const allowedInboundIds = server.inboundIds ?? [];
       const selectedInbounds = inbounds
         .filter((item) => allowedInboundIds.length === 0 || allowedInboundIds.includes(item.id))
         .filter((item) => item.protocol === 'vless');
+
+      this.logger.log(
+        `server inbounds prepared: userId=${userId}, server=${server.id}, total=${inbounds.length}, selectedVless=${selectedInbounds.length}`,
+      );
 
       if (!selectedInbounds.length) {
         continue;
@@ -98,6 +113,10 @@ export class VpnService {
           uuid,
         });
       }
+
+      this.logger.log(
+        `server provisioning done: userId=${userId}, server=${server.id}, durationMs=${Date.now() - serverStartedAt}`,
+      );
     }
 
     if (!configs.length) {
@@ -123,6 +142,10 @@ export class VpnService {
 
     const subscriptionText = this.subscriptionService.merge(configs);
     const subscriptionUrl = this.buildSubscriptionUrl(profile.subscriptionToken);
+
+    this.logger.log(
+      `provisionForUser finished: userId=${userId}, configs=${configs.length}, durationMs=${Date.now() - startedAt}`,
+    );
 
     return {
       profile,

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
@@ -23,12 +24,15 @@ interface YooKassaPayment {
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
   ) {}
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
+    const startedAt = Date.now();
     const isDev = process.env.IS_DEV === 'true';
 
     if (dto.event !== 'payment.succeeded') {
@@ -83,6 +87,10 @@ export class PaymentsService {
       amountCents,
     });
 
+    this.logger.log(
+      `Webhook processed: paymentId=${payment.id}, userId=${userId}, days=${days}, isDev=${isDev}, durationMs=${Date.now() - startedAt}`,
+    );
+
     return {
       ok: true,
       event: dto.event,
@@ -92,7 +100,12 @@ export class PaymentsService {
   }
 
   async confirmPayment(dto: ConfirmPaymentDto) {
+    const startedAt = Date.now();
     const isDev = process.env.IS_DEV === 'true';
+
+    this.logger.log(
+      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
+    );
 
     if (dto.paymentId) {
       const existing = await this.prisma.subscription.findFirst({
@@ -101,6 +114,9 @@ export class PaymentsService {
 
       if (existing) {
         const profile = await this.vpnService.getUserProfile(existing.userId);
+        this.logger.log(
+          `confirmPayment idempotent hit: paymentId=${dto.paymentId}, userId=${existing.userId}, durationMs=${Date.now() - startedAt}`,
+        );
 
         return {
           userId: existing.userId,
@@ -148,6 +164,10 @@ export class PaymentsService {
     });
 
     const vpnProvisioning = await this.vpnService.provisionForUser(user.id);
+
+    this.logger.log(
+      `confirmPayment finished: userId=${user.id}, endsAt=${endsAt.toISOString()}, durationMs=${Date.now() - startedAt}`,
+    );
 
     return {
       userId: user.id,

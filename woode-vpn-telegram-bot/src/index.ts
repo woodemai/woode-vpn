@@ -13,8 +13,16 @@ if (!backendBaseUrl) {
   throw new Error('BACKEND_BASE_URL is required');
 }
 
-const backend = new BackendClient({ baseUrl: backendBaseUrl });
-const bot = new Telegraf(botToken);
+const backendRequestTimeoutMs = Number(process.env.BACKEND_REQUEST_TIMEOUT_MS ?? '10000');
+const handlerTimeoutMs = Number(process.env.TELEGRAM_HANDLER_TIMEOUT_MS ?? '30000');
+
+const backend = new BackendClient({
+  baseUrl: backendBaseUrl,
+  requestTimeoutMs: Number.isFinite(backendRequestTimeoutMs) ? backendRequestTimeoutMs : 10000,
+});
+const bot = new Telegraf(botToken, {
+  handlerTimeout: Number.isFinite(handlerTimeoutMs) ? handlerTimeoutMs : 30000,
+});
 
 const DAY_PLANS = [30, 90, 180, 365] as const;
 
@@ -248,6 +256,11 @@ bot.command('config', async (ctx) => {
     }
     await ctx.reply(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`);
   });
+});
+
+bot.catch((err, ctx) => {
+  const updateType = ctx.updateType || 'unknown';
+  console.error(`Telegraf error on ${updateType}:`, err);
 });
 
 bot.launch();
