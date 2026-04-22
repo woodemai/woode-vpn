@@ -47,11 +47,11 @@ async function editMessageTextOrCaption(
   subscriptionUrl?: string,
 ): Promise<void> {
   try {
-    await ctx.editMessageText(text, {parse_mode: 'MarkdownV2', ...postActionKeyboard(subscriptionUrl)});
+    await ctx.editMessageText(text, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
     return;
   } catch {
     // If the current message is media, fallback to caption edit.
-    await ctx.editMessageCaption(text, {parse_mode: 'MarkdownV2', ...postActionKeyboard(subscriptionUrl)});
+    await ctx.editMessageCaption(text, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
   }
 }
 
@@ -122,7 +122,7 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
     '',
     escapeMarkdownV2('Вам выдана пробная подписка!'),
     escapeMarkdownV2(`Активна до: ${endsAt.toLocaleString()}`),
-    escapeMarkdownV2(`Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`),
+    `Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`,
     '',
     'Возможности:',
     '> 🚀 Высокая скорость',
@@ -132,11 +132,11 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, postActionKeyboard(subscriptionUrl));
+    await ctx.editMessageText(message, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
     return;
   }
 
-  await ctx.reply(message, postActionKeyboard(subscriptionUrl));
+  await ctx.reply(message, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
 }
 
 async function renderBuyMenu(ctx: Context): Promise<void> {
@@ -292,11 +292,11 @@ async function processBuyByDays(ctx: Context, days: number): Promise<void> {
     [
       `Подписка активирована на ${days} дней.`,
       `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
-      `Ваша ссылка на подписку: ${result.subscriptionUrl}`,
+      `Ваша ссылка на подписку: <code>${result.subscriptionUrl}</code>`,
       '',
       'Включает все настроенные страны и доступные соединения.',
     ].join('\n'),
-    postActionKeyboard(result.subscriptionUrl),
+    {parse_mode: 'HTML', ...postActionKeyboard(result.subscriptionUrl)},
   );
 }
 
@@ -422,8 +422,8 @@ bot.command('get_config', async (ctx) => {
       return;
     }
     await ctx.reply(
-      `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
-      postActionKeyboard(profile.subscriptionUrl),
+      `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
+      {parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl)},
     );
   });
 });
@@ -437,8 +437,8 @@ bot.command('config', async (ctx) => {
       return;
     }
     await ctx.reply(
-      `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
-      postActionKeyboard(profile.subscriptionUrl),
+      `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
+      {parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl)},
     );
   });
 });
