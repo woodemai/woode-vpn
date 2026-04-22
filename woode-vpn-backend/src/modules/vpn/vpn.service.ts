@@ -7,9 +7,11 @@ import {
 import { Prisma, SubscriptionStatus, VpnProfile } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../../db/prisma.service';
 import { SubscriptionService } from '../../services/subscription.service';
 import { XuiService } from '../../services/xui.service';
+import { slugify } from 'transliteration';
 
 interface ClientMapping {
   serverId: string;
@@ -19,18 +21,21 @@ interface ClientMapping {
 }
 
 function createShortUniqueLabel(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '.')
-    .replace(/\.+/g, '.')
-    .replace(/^\.|\.$/g, '')
-    .slice(0, 12);
+  const slug = slugify(value, {
+    lowercase: true,
+    separator: '.',
+  }).slice(0, 12);
 
   const hash = Buffer.from(value, 'utf8').toString('hex').slice(0, 4);
   const compactSlug = slug || 'user';
 
   return `${compactSlug}-${hash}`;
 }
+
+const generateSubscriptionToken = customAlphabet(
+  '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+  10,
+);
 
 @Injectable()
 export class VpnService {
@@ -86,7 +91,7 @@ export class VpnService {
 
     this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
 
-    const token = randomUUID();
+    const token = generateSubscriptionToken();
     const subscriptions: string[] = [];
     const mappings: ClientMapping[] = [];
 

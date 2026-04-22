@@ -79,7 +79,7 @@ export class XuiService {
         clients: [
           {
             id: client.id,
-            flow: '',
+            flow: 'xtls-rprx-vision',
             email: client.email,
             limitIp: 0,
             totalGB: client.totalGB ?? 0,
