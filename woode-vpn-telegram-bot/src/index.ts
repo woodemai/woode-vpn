@@ -91,11 +91,16 @@ function buyMenuKeyboard() {
   ]);
 }
 
+
+function escapeMarkdownV2(text: string) {
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
   const message = [
-    'WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅',
+    escapeMarkdownV2('WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅'),
     '',
-    'Возможности:',
+    escapeMarkdownV2('Возможности:'),
     '> 🚀 Высокая скорость',
     '> 🔄 Надежность',
     '> 💬 Быстрая поддержка',
@@ -110,9 +115,6 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
   await ctx.reply(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
 }
 
-function escapeMarkdownV2(text: string) {
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-}
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
   const message = [
