@@ -3,8 +3,3 @@
   encode gzip
   reverse_proxy app:3000
 }
-{
-  servers {
-    protocols h1 h2
-  }
-}
