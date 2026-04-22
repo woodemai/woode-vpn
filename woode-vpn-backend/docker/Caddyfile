@@ -1,4 +1,4 @@
-{$APP_DOMAIN} {
+{$APP_DOMAIN:localhost} {
   encode gzip
 
   reverse_proxy app:3000

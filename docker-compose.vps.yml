@@ -71,6 +71,8 @@ services:
     image: caddy:2-alpine
     container_name: woode-vpn-caddy
     restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
     depends_on:
       app:
         condition: service_healthy
