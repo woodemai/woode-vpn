@@ -29,6 +29,8 @@ export class PaymentsService {
   ) {}
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
+    const isDev = process.env.IS_DEV === 'true';
+
     if (dto.event !== 'payment.succeeded') {
       return { ok: true, ignored: true };
     }
@@ -38,7 +40,11 @@ export class PaymentsService {
       throw new BadRequestException('Invalid YooKassa webhook payload: payment id is missing');
     }
 
-    const payment = await this.verifyYooKassaPayment(rawPaymentId);
+    // In dev mode, skip payment verification
+    const payment = isDev
+      ? { id: rawPaymentId, amount: { value: '100' }, metadata: dto.object?.metadata ?? {} }
+      : await this.verifyYooKassaPayment(rawPaymentId);
+
     const metadata = payment.metadata ?? {};
 
     const rawUserId = metadata.userId;
@@ -78,7 +84,24 @@ export class PaymentsService {
   }
 
   async confirmPayment(dto: ConfirmPaymentDto) {
-    if (dto.paymentId) {
+    const isDev = process.env.IS_DEV === 'true';
+
+    if (dto.paymentId && !isDev) {
+      const existing = await this.prisma.subscription.findFirst({
+        where: { paymentId: dto.paymentId },
+      });
+
+      if (existing) {
+        const profile = await this.vpnService.getUserProfile(existing.userId);
+
+        return {
+          userId: existing.userId,
+          endsAt: existing.endsAt,
+          subscriptionUrl: profile.subscriptionUrl,
+          alreadyProcessed: true,
+        };
+      }
+    } else if (dto.paymentId && isDev) {
       const existing = await this.prisma.subscription.findFirst({
         where: { paymentId: dto.paymentId },
       });
@@ -114,7 +137,7 @@ export class PaymentsService {
         : now;
 
     const endsAt = new Date(startsAt);
-  endsAt.setDate(endsAt.getDate() + days);
+    endsAt.setDate(endsAt.getDate() + days);
 
     if (endsAt <= startsAt) {
       throw new BadRequestException('Invalid subscription dates');
@@ -126,7 +149,7 @@ export class PaymentsService {
         status: SubscriptionStatus.ACTIVE,
         startsAt,
         endsAt,
-        paymentId: dto.paymentId,
+        paymentId: dto.paymentId || `dev-${Date.now()}`,
         amountCents: dto.amountCents,
       },
     });

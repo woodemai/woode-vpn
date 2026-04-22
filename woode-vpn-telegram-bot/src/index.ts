@@ -21,55 +21,85 @@ const DAY_PLANS = [30, 90, 180, 365] as const;
 type CallbackData =
   | 'MENU_MAIN'
   | 'MENU_BUY'
+  | 'TRIAL'
   | 'ACTION_CONFIG'
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
-function mainMenuKeyboard() {
+function mainMenuKeyboard(hasSubscription: boolean) {
+  const subscriptionButton = hasSubscription
+    ? Markup.button.callback('💳 Купить/Продлить подписку', 'MENU_BUY')
+    : Markup.button.callback('🎁 Пробная подписка на 2 дня', 'TRIAL');
+
   return Markup.inlineKeyboard([
-    [Markup.button.callback('Buy or extend', 'MENU_BUY')],
-    [Markup.button.callback('Get config', 'ACTION_CONFIG')],
+    [subscriptionButton],
+    [Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')],
   ]);
 }
 
 function buyMenuKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('30 days', 'BUY_DAYS_30')],
-    [Markup.button.callback('90 days', 'BUY_DAYS_90')],
-    [Markup.button.callback('180 days', 'BUY_DAYS_180')],
-    [Markup.button.callback('365 days', 'BUY_DAYS_365')],
-    [Markup.button.callback('Back', 'MENU_MAIN')],
+    [Markup.button.callback('30 дней', 'BUY_DAYS_30')],
+    [Markup.button.callback('90 дней', 'BUY_DAYS_90')],
+    [Markup.button.callback('180 дней', 'BUY_DAYS_180')],
+    [Markup.button.callback('365 дней', 'BUY_DAYS_365')],
+    [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
   ]);
 }
 
 function postActionKeyboard() {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('Get config', 'ACTION_CONFIG')],
-    [Markup.button.callback('Buy more', 'MENU_BUY')],
-    [Markup.button.callback('Main menu', 'MENU_MAIN')],
+    [Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')],
+    [Markup.button.callback('Докупить', 'MENU_BUY')],
+    [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
   ]);
 }
 
-async function renderMainMenu(ctx: Context): Promise<void> {
+async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
   const message = [
-    'VPN bot menu',
+    'WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅',
     '',
-    '- Buy subscription for 30/90/180/365 days',
-    '- Subscription includes all configured countries and available inbounds',
-    '- Get subscription URL',
+    'Возможности:',
+    '> 🚀 Высокая скорость',
+    '> 🔄 Надежность',
+    '> 💬 Быстрая поддержка',
+    '> 📱💻 Доступно на всех устройствах',
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, mainMenuKeyboard());
+    await ctx.editMessageText(message, mainMenuKeyboard(hasSubscription));
     return;
   }
 
-  await ctx.reply(message, mainMenuKeyboard());
+  await ctx.reply(message, mainMenuKeyboard(hasSubscription));
+}
+
+async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
+  const message = [
+    'WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅',
+    '',
+    'Вам выдана пробная подписка!',
+    `Активна до: ${endsAt.toLocaleString()}`,
+    `Ваша ссылка на подписку: ${subscriptionUrl}`,
+    '',
+    'Возможности:',
+    '> 🚀 Высокая скорость',
+    '> 🔄 Надежность',
+    '> 💬 Быстрая поддержка',
+    '> 📱💻 Доступно на всех устойствах',
+  ].join('\n');
+
+  if ('callbackQuery' in ctx.update) {
+    await ctx.editMessageText(message, postActionKeyboard());
+    return;
+  }
+
+  await ctx.reply(message, postActionKeyboard());
 }
 
 async function renderBuyMenu(ctx: Context): Promise<void> {
   const message = [
-    'Choose subscription duration:',
-    '30, 90, 180 or 365 days.',
+    'Выберите продолжительность подписки:',
+    '30, 90, 180 или 365 дней.',
   ].join('\n');
 
   await ctx.editMessageText(message, buyMenuKeyboard());
@@ -78,7 +108,7 @@ async function renderBuyMenu(ctx: Context): Promise<void> {
 async function registerAndGetUserId(ctx: Context): Promise<number> {
   const tgUserId = ctx.from?.id;
   if (!tgUserId) {
-    throw new Error('Cannot detect your Telegram user id.');
+    throw new Error('Не удалось определить ваш ID пользователя Telegram.');
   }
 
   const user = await backend.registerUser(tgUserId);
@@ -90,11 +120,11 @@ async function renderConfig(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await ctx.editMessageText('No active subscription found. Choose a plan first.', postActionKeyboard());
+    await ctx.editMessageText('Активная подписка не найдена. Сначала выберите план.', postActionKeyboard());
     return;
   }
 
-  await ctx.editMessageText(`Your subscription URL:\n${profile.subscriptionUrl}`, postActionKeyboard());
+  await ctx.editMessageText(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`, postActionKeyboard());
 }
 
 async function processBuyByDays(ctx: Context, days: number): Promise<void> {
@@ -106,11 +136,11 @@ async function processBuyByDays(ctx: Context, days: number): Promise<void> {
 
   await ctx.editMessageText(
     [
-      `Subscription activated for ${days} days.`,
-      `Active until: ${new Date(result.endsAt).toLocaleString()}`,
-      `Subscription URL: ${result.subscriptionUrl}`,
+      `Подписка активирована на ${days} дней.`,
+      `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
+      `Ваша ссылка на подписку: ${result.subscriptionUrl}`,
       '',
-      'Includes all configured countries and available inbounds.',
+      'Включает все настроенные страны и доступные соединения.',
     ].join('\n'),
     postActionKeyboard(),
   );
@@ -120,19 +150,20 @@ async function safeHandleCallback(ctx: Context, action: () => Promise<void>): Pr
   try {
     await action();
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
     if ('callbackQuery' in ctx.update) {
-      await ctx.editMessageText(`Error: ${message}`, postActionKeyboard());
+      await ctx.editMessageText(`❌ Ошибка: ${message}`, postActionKeyboard());
       return;
     }
-    await ctx.reply(`Error: ${message}`);
+    await ctx.reply(`❌ Ошибка: ${message}`);
   }
 }
 
 bot.start(async (ctx) => {
   await safeHandleCallback(ctx, async () => {
-    await registerAndGetUserId(ctx);
-    await renderMainMenu(ctx);
+    const userId = await registerAndGetUserId(ctx);
+    const profile = await backend.getProfile(userId);
+    await renderMainMenu(ctx, profile.hasActiveSubscription);
   });
 });
 
@@ -145,15 +176,25 @@ bot.on('callback_query', async (ctx) => {
   }
 
   await ctx.answerCbQuery();
+  await ctx.editMessageText('⏳ Обработка...');
 
   await safeHandleCallback(ctx, async () => {
     if (data === 'MENU_MAIN') {
-      await renderMainMenu(ctx);
+      const userId = await registerAndGetUserId(ctx);
+      const profile = await backend.getProfile(userId);
+      await renderMainMenu(ctx, profile.hasActiveSubscription);
       return;
     }
 
     if (data === 'MENU_BUY') {
       await renderBuyMenu(ctx);
+      return;
+    }
+
+    if (data === 'TRIAL') {
+      const userId = await registerAndGetUserId(ctx);
+      const result = await backend.confirmPayment({ userId, days: 2 });
+      await renderGotDemoSubscriptionMenu(ctx, new Date(result.endsAt), result.subscriptionUrl);
       return;
     }
 
@@ -165,14 +206,16 @@ bot.on('callback_query', async (ctx) => {
     if (data.startsWith('BUY_DAYS_')) {
       const days = Number(data.replace('BUY_DAYS_', ''));
       if (!DAY_PLANS.includes(days as (typeof DAY_PLANS)[number])) {
-        throw new Error('Invalid plan selected');
+        throw new Error('Выбран неправильный план');
       }
 
       await processBuyByDays(ctx, days);
       return;
     }
 
-    await renderMainMenu(ctx);
+    const userId = await registerAndGetUserId(ctx);
+    const profile = await backend.getProfile(userId);
+    await renderMainMenu(ctx, profile.hasActiveSubscription);
   });
 });
 
@@ -188,10 +231,10 @@ bot.command('get_config', async (ctx) => {
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
     if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-      await ctx.reply('No active subscription found. Use /start and choose a plan.');
+      await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
       return;
     }
-    await ctx.reply(`Your subscription URL:\n${profile.subscriptionUrl}`);
+    await ctx.reply(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`);
   });
 });
 
@@ -200,10 +243,10 @@ bot.command('config', async (ctx) => {
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
     if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-      await ctx.reply('No active subscription found. Use /start and choose a plan.');
+      await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
       return;
     }
-    await ctx.reply(`Your subscription URL:\n${profile.subscriptionUrl}`);
+    await ctx.reply(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`);
   });
 });
 
