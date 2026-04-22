@@ -4,7 +4,7 @@ import { UsersService } from './users.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post('register')
   async register(@Body() dto: CreateUserDto) {
@@ -13,6 +13,7 @@ export class UsersController {
     return {
       userId: user.id,
       externalId: user.externalId,
+      telegramName: user.telegramName,
       email: user.email,
       createdAt: user.createdAt,
     };

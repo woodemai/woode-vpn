@@ -18,6 +18,20 @@ interface ClientMapping {
   uuid: string;
 }
 
+function createShortUniqueLabel(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '.')
+    .replace(/\.+/g, '.')
+    .replace(/^\.|\.$/g, '')
+    .slice(0, 12);
+
+  const hash = Buffer.from(value, 'utf8').toString('hex').slice(0, 4);
+  const compactSlug = slug || 'user';
+
+  return `${compactSlug}-${hash}`;
+}
+
 @Injectable()
 export class VpnService {
   private readonly logger = new Logger(VpnService.name);
@@ -27,7 +41,7 @@ export class VpnService {
     private readonly xuiService: XuiService,
     private readonly subscriptionService: SubscriptionService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async provisionForUser(userId: number, country?: string): Promise<{
     profile: VpnProfile;
@@ -43,6 +57,12 @@ export class VpnService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    const telegramNameSource =
+      (user as typeof user & { telegramName?: string | null }).telegramName ??
+      user.externalId ??
+      `user-${userId}`;
+    const xuiEmailPrefix = createShortUniqueLabel(telegramNameSource);
 
     const activeSubscription = await this.prisma.subscription.findFirst({
       where: {
@@ -89,7 +109,7 @@ export class VpnService {
 
       for (const inbound of selectedInbounds) {
         const uuid = randomUUID();
-        const email = `u${userId}-${server.id}-${inbound.id}`;
+        const email = `${xuiEmailPrefix}-${server.id}-${inbound.id}`;
 
         await this.xuiService.addClient(server, inbound.id, {
           id: uuid,
@@ -251,7 +271,7 @@ export class VpnService {
       1,
       Number(
         this.configService.get<number>('app.subscription.updateIntervalHours') ??
-          12,
+        12,
       ),
     );
 

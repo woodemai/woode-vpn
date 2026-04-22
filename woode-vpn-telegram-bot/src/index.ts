@@ -50,8 +50,6 @@ function buildHappLinkText(subscriptionUrl: string): string {
 }
 
 function buildHappInstructionsText(subscriptionUrl: string): string {
-  const happUrl = buildHappAddUrl(subscriptionUrl);
-
   return [
     '<b>📲 Как подключить подписку в Happ</b>',
     '',
@@ -137,7 +135,7 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
 
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
+    await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
     return;
   }
 
@@ -187,7 +185,15 @@ async function registerAndGetUserId(ctx: Context): Promise<number> {
     throw new Error('Не удалось определить ваш ID пользователя Telegram.');
   }
 
-  const user = await backend.registerUser(tgUserId);
+  const telegramName = [ctx.from?.first_name, ctx.from?.last_name]
+    .filter(Boolean)
+    .join(' ')
+    .trim() || ctx.from?.username || `user-${tgUserId}`;
+
+  const user = await backend.registerUser({
+    telegramUserId: tgUserId,
+    telegramName,
+  });
   return user.userId;
 }
 

@@ -7,6 +7,7 @@ export class CreateUserDto {
   externalId?: string;
 
   @IsOptional()
-  @IsEmail()
-  email?: string;
+  @IsString()
+  @MaxLength(128)
+  telegramName?: string;
 }

@@ -1,6 +1,7 @@
 export interface RegisterUserResponse {
   userId: number;
   externalId?: string;
+  telegramName?: string;
   email?: string;
   createdAt: string;
 }
@@ -32,11 +33,20 @@ export class BackendClient {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10000;
   }
 
-  async registerUser(telegramUserId: number): Promise<RegisterUserResponse> {
+  async registerUser(input: {
+    telegramUserId: number;
+    telegramName: string;
+  }): Promise<RegisterUserResponse> {
+    const displayName = this.buildTelegramDisplayName(input.telegramName);
+
     return this.request<RegisterUserResponse>('/api/users/register', {
       method: 'POST',
-      body: { externalId: String(telegramUserId) },
+      body: { externalId: String(input.telegramUserId), telegramName: displayName },
     });
+  }
+
+  private buildTelegramDisplayName(telegramName: string): string {
+    return telegramName.trim().slice(0, 128) || 'Telegram user';
   }
 
   async confirmPayment(input: {

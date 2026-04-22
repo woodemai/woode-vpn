@@ -16,6 +16,7 @@ enum SubscriptionStatus {
 model User {
   id            Int            @id @default(autoincrement())
   externalId    String?        @unique
+  telegramName  String?
   email         String?        @unique
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
