@@ -38,20 +38,52 @@ type CallbackData =
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
-  return `happ://add/${subscriptionUrl}`;
+  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
 }
 
-async function editMessageTextOrCaption(
+function buildSubscriptionLinkText(subscriptionUrl: string): string {
+  return `Ваша ссылка на подписку:\n<code>${subscriptionUrl}</code>`;
+}
+
+function buildHappLinkText(subscriptionUrl: string): string {
+  return `Ссылка для Happ:\n<code>${buildHappAddUrl(subscriptionUrl)}</code>`;
+}
+
+function buildHappInstructionsText(subscriptionUrl: string): string {
+  const happUrl = buildHappAddUrl(subscriptionUrl);
+
+  return [
+    '<b>📲 Как подключить подписку в Happ</b>',
+    '',
+    '1️⃣ Скопируйте ссылку ниже',
+    '2️⃣ Вставьте в Happ вручную через',
+    '   • Добавить подписку',
+    '   • Вставить из буфера обмена',
+    '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
+    '',
+    '<b>🔗 Ссылка подписки:</b>',
+    `<code>${subscriptionUrl}</code>`,
+  ].join('\n');
+}
+
+async function editCurrentMessage(
   ctx: Context,
   text: string,
-  subscriptionUrl?: string,
+  options?: {
+    subscriptionUrl?: string;
+    parseMode?: 'HTML' | 'MarkdownV2';
+    keyboard?: ReturnType<typeof Markup.inlineKeyboard>;
+  },
 ): Promise<void> {
+  const parseMode = options?.parseMode ?? 'HTML';
+  const replyMarkup = options?.keyboard ?? postActionKeyboard(options?.subscriptionUrl);
+
   try {
-    await ctx.editMessageText(text, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
+    await ctx.editMessageText(text, { parse_mode: parseMode, ...replyMarkup });
     return;
   } catch {
     // If the current message is media, fallback to caption edit.
-    await ctx.editMessageCaption(text, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
+    await ctx.editMessageCaption(text, { parse_mode: parseMode, ...replyMarkup });
   }
 }
 
@@ -115,7 +147,7 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
   const message = [
-    'WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅',
+    '<b>WoodeVPN ✨</b> - быстрый и надеждный доступ в интернет! ✅',
     '',
     'Вам выдана пробная подписка!',
     `Активна до: ${endsAt.toLocaleString()}`,
@@ -129,7 +161,11 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
+    await editCurrentMessage(ctx, message, {
+      subscriptionUrl,
+      parseMode: 'HTML',
+      keyboard: postActionKeyboard(subscriptionUrl),
+    });
     return;
   }
 
@@ -160,17 +196,17 @@ async function renderConfig(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editMessageTextOrCaption(
+    await editCurrentMessage(
       ctx,
       'Активная подписка не найдена. Сначала выберите план.',
     );
     return;
   }
 
-  await editMessageTextOrCaption(
+  await editCurrentMessage(
     ctx,
-    `Ваша ссылка на подписку:\n\<code>${profile.subscriptionUrl}</code>`,
-    profile.subscriptionUrl,
+    buildSubscriptionLinkText(profile.subscriptionUrl),
+    { subscriptionUrl: profile.subscriptionUrl },
   );
 }
 
@@ -179,10 +215,9 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await ctx.editMessageText(
-      'Активная подписка не найдена. Сначала выберите план.',
-      postActionKeyboard(),
-    );
+    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
+      keyboard: postActionKeyboard(),
+    });
     return;
   }
 
@@ -226,20 +261,17 @@ async function sendHappDeepLink(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await ctx.editMessageText(
-      'Активная подписка не найдена. Сначала выберите план.',
-      postActionKeyboard(),
-    );
+    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
+      keyboard: postActionKeyboard(),
+    });
     return;
   }
 
   const happUrl = buildHappAddUrl(profile.subscriptionUrl);
-  await editMessageTextOrCaption(
+  await editCurrentMessage(
     ctx,
-    [
-      `Ваша ссылка на подписку: <code>${profile.subscriptionUrl}</code>`,
-    ].join('\n'),
-    profile.subscriptionUrl,
+    [buildSubscriptionLinkText(profile.subscriptionUrl), buildHappLinkText(profile.subscriptionUrl)].join('\n\n'),
+    { subscriptionUrl: profile.subscriptionUrl },
   );
 }
 
@@ -248,30 +280,15 @@ async function renderHappInstructions(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editMessageTextOrCaption(
-      ctx,
-      'Активная подписка не найдена. Сначала выберите план.',
-    );
+    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
+      keyboard: postActionKeyboard(),
+    });
     return;
   }
 
-  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
-  const instruction = [
-    '<b>📲 Как подключить подписку в Happ</b>',
-    '',
-    '1️⃣ Скопируйте ссылку ниже',
-    '2️⃣ Вставьте в Happ вручную через',
-    '   • Добавить подписку',
-    '   • Вставить из буфера обмена',
-    '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
-    '',
-    '<b>🔗 Ссылка подписки:</b>',
-    `<code>${profile.subscriptionUrl}</code>`,
-  ].join('\n');
-
-  await ctx.editMessageText(instruction, {
-    parse_mode: 'HTML',
-    ...postActionKeyboard(profile.subscriptionUrl),
+  await editCurrentMessage(ctx, buildHappInstructionsText(profile.subscriptionUrl), {
+    subscriptionUrl: profile.subscriptionUrl,
+    parseMode: 'HTML',
   });
 }
 
@@ -314,9 +331,10 @@ async function safeHandleCallback(ctx: Context, action: () => Promise<void>): Pr
         hasSubscription = false;
       }
 
-      await ctx.editMessageText(
-        `${fallbackText}\n\nWoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅`,
-        mainMenuKeyboard(hasSubscription),
+      await editCurrentMessage(
+        ctx,
+        `${fallbackText}\n\n<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅`,
+        { keyboard: mainMenuKeyboard(hasSubscription), parseMode: 'HTML' },
       );
       return;
     }
