@@ -92,15 +92,12 @@ function buyMenuKeyboard() {
 }
 
 
-function escapeMarkdownV2(text: string) {
-  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
-}
 
 async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
   const message = [
-    escapeMarkdownV2('WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅'),
+    'WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅',
     '',
-    escapeMarkdownV2('Возможности:'),
+    'Возможности:',
     '> 🚀 Высокая скорость',
     '> 🔄 Надежность',
     '> 💬 Быстрая поддержка',
@@ -108,20 +105,20 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
+    await ctx.editMessageText(message, {parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription)});
     return;
   }
 
-  await ctx.reply(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
+  await ctx.reply(message, {parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription)});
 }
 
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
   const message = [
-    escapeMarkdownV2('WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅'),
+    'WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅',
     '',
-    escapeMarkdownV2('Вам выдана пробная подписка!'),
-    escapeMarkdownV2(`Активна до: ${endsAt.toLocaleString()}`),
+    'Вам выдана пробная подписка!',
+    `Активна до: ${endsAt.toLocaleString()}`,
     `Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`,
     '',
     'Возможности:',
@@ -165,14 +162,14 @@ async function renderConfig(ctx: Context): Promise<void> {
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
     await editMessageTextOrCaption(
       ctx,
-      escapeMarkdownV2('Активная подписка не найдена. Сначала выберите план.'),
+      'Активная подписка не найдена. Сначала выберите план.',
     );
     return;
   }
 
   await editMessageTextOrCaption(
     ctx,
-    escapeMarkdownV2(`Ваша ссылка на подписку:\n\<code>${profile.subscriptionUrl}</code>`),
+    `Ваша ссылка на подписку:\n\<code>${profile.subscriptionUrl}</code>`,
     profile.subscriptionUrl,
   );
 }
