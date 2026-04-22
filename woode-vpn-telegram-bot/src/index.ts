@@ -33,6 +33,7 @@ type CallbackData =
   | 'TRIAL'
   | 'ACTION_CONFIG'
   | 'ACTION_HAPP'
+  | 'ACTION_HAPP_HELP'
   | 'ACTION_QR'
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
@@ -59,11 +60,11 @@ function postActionKeyboard(subscriptionUrl?: string) {
 
   if (subscriptionUrl) {
     rows.push([Markup.button.callback('Добавить в Happ', 'ACTION_HAPP')]);
+    rows.push([Markup.button.callback('Как подключить в Happ', 'ACTION_HAPP_HELP')]);
     rows.push([Markup.button.callback('QR Код', 'ACTION_QR')]);
   }
 
   rows.push([Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')]);
-  rows.push([Markup.button.callback('Докупить', 'MENU_BUY')]);
   rows.push([Markup.button.callback('Назад к меню', 'MENU_MAIN')]);
 
   return Markup.inlineKeyboard(rows);
@@ -239,6 +240,41 @@ async function sendHappDeepLink(ctx: Context): Promise<void> {
   );
 }
 
+async function renderHappInstructions(ctx: Context): Promise<void> {
+  const userId = await registerAndGetUserId(ctx);
+  const profile = await backend.getProfile(userId);
+
+  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
+    await editMessageTextOrCaption(
+      ctx,
+      'Активная подписка не найдена. Сначала выберите план.',
+    );
+    return;
+  }
+
+  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
+  const instruction = [
+    '<b>📲 Как подключить подписку в Happ</b>',
+    '',
+    '1️⃣ Нажмите кнопку <b>Добавить в Happ</b> внизу.',
+    '2️⃣ Если приложение не открылось автоматически:',
+    '   • скопируйте ссылку ниже',
+    '   • вставьте в Happ вручную через Add Subscription.',
+    '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
+    '',
+    '<b>🔗 Ссылка подписки:</b>',
+    `<code>${profile.subscriptionUrl}</code>`,
+    '',
+    '<b>🚀 Deep Link Happ:</b>',
+    `<code>${happUrl}</code>`,
+  ].join('\n');
+
+  await ctx.editMessageText(instruction, {
+    parse_mode: 'HTML',
+    ...postActionKeyboard(profile.subscriptionUrl),
+  });
+}
+
 async function processBuyByDays(ctx: Context, days: number): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
   const result = await backend.confirmPayment({
@@ -262,12 +298,30 @@ async function safeHandleCallback(ctx: Context, action: () => Promise<void>): Pr
   try {
     await action();
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Bot handler error:', message);
+
+    const fallbackText = '⚠️ Что-то пошло не так. Попробуйте еще раз.';
+
     if ('callbackQuery' in ctx.update) {
-      await ctx.editMessageText(`❌ Ошибка: ${message}`, postActionKeyboard());
+      let hasSubscription = false;
+
+      try {
+        const userId = await registerAndGetUserId(ctx);
+        const profile = await backend.getProfile(userId);
+        hasSubscription = profile.hasActiveSubscription;
+      } catch {
+        hasSubscription = false;
+      }
+
+      await ctx.editMessageText(
+        `${fallbackText}\n\nWoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅`,
+        mainMenuKeyboard(hasSubscription),
+      );
       return;
     }
-    await ctx.reply(`❌ Ошибка: ${message}`);
+
+    await ctx.reply(fallbackText, mainMenuKeyboard(false));
   }
 }
 
@@ -305,7 +359,7 @@ bot.on('callback_query', async (ctx) => {
 
     if (data === 'TRIAL') {
       const userId = await registerAndGetUserId(ctx);
-      const result = await backend.confirmPayment({ userId, days: 2 });
+      const result = await backend.confirmPayment({ userId, days: 90 });
       await renderGotDemoSubscriptionMenu(ctx, new Date(result.endsAt), result.subscriptionUrl);
       return;
     }
@@ -317,6 +371,11 @@ bot.on('callback_query', async (ctx) => {
 
     if (data === 'ACTION_HAPP') {
       await sendHappDeepLink(ctx);
+      return;
+    }
+
+    if (data === 'ACTION_HAPP_HELP') {
+      await renderHappInstructions(ctx);
       return;
     }
 
