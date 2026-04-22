@@ -110,13 +110,17 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
   await ctx.reply(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
 }
 
+function escapeMarkdownV2(text: string) {
+  return text.replace(/[_*[\]()~`>#+\-=|{}.!]/g, '\\$&');
+}
+
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
   const message = [
-    'WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅',
+    escapeMarkdownV2('WoodeVPN ✨ - быстрый и надеждный доступ в интернет! ✅'),
     '',
-    'Вам выдана пробная подписка!',
-    `Активна до: ${endsAt.toLocaleString()}`,
-    `Ваша ссылка на подписку: ${subscriptionUrl}`,
+    escapeMarkdownV2('Вам выдана пробная подписка!'),
+    escapeMarkdownV2(`Активна до: ${endsAt.toLocaleString()}`),
+    escapeMarkdownV2(`Ваша ссылка на подписку: \`${subscriptionUrl}\``),
     '',
     'Возможности:',
     '> 🚀 Высокая скорость',
