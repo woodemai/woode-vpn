@@ -47,11 +47,11 @@ async function editMessageTextOrCaption(
   subscriptionUrl?: string,
 ): Promise<void> {
   try {
-    await ctx.editMessageText(text, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
+    await ctx.editMessageText(text, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
     return;
   } catch {
     // If the current message is media, fallback to caption edit.
-    await ctx.editMessageCaption(text, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
+    await ctx.editMessageCaption(text, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
   }
 }
 
@@ -94,23 +94,24 @@ function buyMenuKeyboard() {
 
 
 async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
-  const message = `
-    WoodeVPN ✨ — быстрый и надежный доступ в интернет! ✅
+  const message =
 
-    Возможности:
+    ['WoodeVPN ✨ — быстрый и надежный доступ в интернет! ✅',
+      '',
+      'Возможности:',
 
-    <blockquote>🚀 Высокая скорость</blockquote>
-    <blockquote>🔄 Надежность</blockquote>
-    <blockquote>💬 Быстрая поддержка</blockquote>
-    <blockquote>📱💻 Доступно на всех устройствах</blockquote>
-  `;
+      '<blockquote>🚀 Высокая скорость',
+      '🔄 Надежность',
+      '💬 Быстрая поддержка',
+      '📱💻 Доступно на всех устройствах</blockquote>'].join('\n')
+
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, {parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription)});
+    await ctx.editMessageText(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
     return;
   }
 
-  await ctx.reply(message, {parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription)});
+  await ctx.reply(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
 }
 
 
@@ -130,11 +131,11 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
+    await ctx.editMessageText(message, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
     return;
   }
 
-  await ctx.reply(message, {parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl)});
+  await ctx.reply(message, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
 }
 
 async function renderBuyMenu(ctx: Context): Promise<void> {
@@ -289,7 +290,7 @@ async function processBuyByDays(ctx: Context, days: number): Promise<void> {
       '',
       'Включает все настроенные страны и доступные соединения.',
     ].join('\n'),
-    {parse_mode: 'HTML', ...postActionKeyboard(result.subscriptionUrl)},
+    { parse_mode: 'HTML', ...postActionKeyboard(result.subscriptionUrl) },
   );
 }
 
@@ -416,7 +417,7 @@ bot.command('get_config', async (ctx) => {
     }
     await ctx.reply(
       `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
-      {parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl)},
+      { parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl) },
     );
   });
 });
@@ -431,7 +432,7 @@ bot.command('config', async (ctx) => {
     }
     await ctx.reply(
       `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
-      {parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl)},
+      { parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl) },
     );
   });
 });
