@@ -170,6 +170,20 @@ export class VpnService {
   }
 
   async getSubscriptionByToken(token: string): Promise<string> {
+    const payload = await this.getSubscriptionPayloadByToken(token);
+    return payload.subscriptionText;
+  }
+
+  async getSubscriptionPayloadByToken(token: string): Promise<{
+    subscriptionText: string;
+    plainSubscriptionText: string;
+    userInfo: string;
+    profileTitleBase64: string;
+    profileUpdateIntervalHours: number;
+    supportUrl: string;
+    profileUrl: string;
+    announce: string;
+  }> {
     const profile = await this.prisma.vpnProfile.findUnique({
       where: { subscriptionToken: token },
       include: { user: true },
@@ -198,7 +212,112 @@ export class VpnService {
       ? (profile.configs as string[])
       : [];
 
-    return this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
+    const refreshFromXui =
+      this.configService.get<boolean>('app.subscription.refreshFromXui') ?? true;
+
+    let effectiveSubscriptions = subscriptions;
+    if (refreshFromXui) {
+      const liveSubscriptions = await this.fetchLiveSubscriptions(token);
+
+      if (liveSubscriptions.length) {
+        effectiveSubscriptions = liveSubscriptions;
+        await this.prisma.vpnProfile.update({
+          where: { id: profile.id },
+          data: {
+            configs: liveSubscriptions as unknown as Prisma.InputJsonValue,
+          },
+        });
+      }
+    }
+
+    const mergedPlainText = this.subscriptionService.mergePlainSubscriptions(
+      effectiveSubscriptions,
+    );
+
+    if (!mergedPlainText.trim()) {
+      throw new BadRequestException('Subscription has no active nodes');
+    }
+
+    const totalBytes = Math.max(
+      0,
+      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+    );
+    const expireTs = Math.floor(activeSubscription.endsAt.getTime() / 1000);
+    const userInfo = `upload=0; download=0; total=${totalBytes}; expire=${expireTs}`;
+
+    const title = this.configService.get<string>('app.subscription.title') ?? 'Woode VPN';
+    const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
+    const profileUpdateIntervalHours = Math.max(
+      1,
+      Number(
+        this.configService.get<number>('app.subscription.updateIntervalHours') ??
+          12,
+      ),
+    );
+
+    const supportUrl =
+      this.configService.get<string>('app.subscription.supportUrl') ?? '';
+    const profileUrl =
+      this.configService.get<string>('app.subscription.profileUrl') ?? '';
+    const announce = this.configService.get<string>('app.subscription.announce') ?? '';
+
+    const metaLines = [
+      `#profile-title: ${title}`,
+      `#profile-update-interval: ${profileUpdateIntervalHours}`,
+      `#subscription-userinfo: ${userInfo}`,
+      ...(supportUrl ? [`#support-url: ${supportUrl}`] : []),
+      ...(profileUrl ? [`#profile-web-page-url: ${profileUrl}`] : []),
+      ...(announce ? [`#announce: ${announce}`] : []),
+    ];
+
+    const plainSubscriptionText = `${metaLines.join('\n')}\n${mergedPlainText}`;
+    const subscriptionText =
+      this.subscriptionService.encodeBase64Subscription(plainSubscriptionText);
+
+    return {
+      subscriptionText,
+      plainSubscriptionText,
+      userInfo,
+      profileTitleBase64,
+      profileUpdateIntervalHours,
+      supportUrl,
+      profileUrl,
+      announce,
+    };
+  }
+
+  private async fetchLiveSubscriptions(token: string): Promise<string[]> {
+    const servers = this.xuiService
+      .getServers()
+      .filter((server) => Boolean(server.subscriptionUrl));
+
+    if (!servers.length) {
+      return [];
+    }
+
+    const liveSubscriptions: string[] = [];
+
+    for (const server of servers) {
+      try {
+        const encodedSubscription = await this.xuiService.getSubscription(
+          server,
+          token,
+        );
+        const decodedSubscription =
+          this.subscriptionService.decodeBase64Subscription(encodedSubscription);
+
+        if (decodedSubscription.trim()) {
+          liveSubscriptions.push(decodedSubscription);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        this.logger.warn(
+          `live subscription refresh failed: server=${server.id}, token=${token}, error=${message}`,
+        );
+      }
+    }
+
+    return liveSubscriptions;
   }
 
   async getUserProfile(userId: number): Promise<{
