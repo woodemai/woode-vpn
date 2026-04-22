@@ -32,20 +32,19 @@ type CallbackData =
   | 'MENU_BUY'
   | 'TRIAL'
   | 'ACTION_CONFIG'
+  | 'ACTION_HAPP'
   | 'ACTION_QR'
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
-  return `happ://add/${subscriptionUrl}`;
+  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
 }
 
 function postActionKeyboard(subscriptionUrl?: string) {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
   if (subscriptionUrl) {
-    rows.push([
-      Markup.button.url('Добавить в Happ', buildHappAddUrl(subscriptionUrl)),
-    ]);
+    rows.push([Markup.button.callback('Добавить в Happ', 'ACTION_HAPP')]);
     rows.push([Markup.button.callback('QR Код', 'ACTION_QR')]);
   }
 
@@ -187,6 +186,30 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
   );
 }
 
+async function sendHappDeepLink(ctx: Context): Promise<void> {
+  const userId = await registerAndGetUserId(ctx);
+  const profile = await backend.getProfile(userId);
+
+  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
+    await ctx.editMessageText(
+      'Активная подписка не найдена. Сначала выберите план.',
+      postActionKeyboard(),
+    );
+    return;
+  }
+
+  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
+  await ctx.reply(
+    `Ссылка для Happ:\n${happUrl}`,
+    postActionKeyboard(profile.subscriptionUrl),
+  );
+
+  await ctx.editMessageText(
+    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+    postActionKeyboard(profile.subscriptionUrl),
+  );
+}
+
 async function processBuyByDays(ctx: Context, days: number): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
   const result = await backend.confirmPayment({
@@ -260,6 +283,11 @@ bot.on('callback_query', async (ctx) => {
 
     if (data === 'ACTION_CONFIG') {
       await renderConfig(ctx);
+      return;
+    }
+
+    if (data === 'ACTION_HAPP') {
+      await sendHappDeepLink(ctx);
       return;
     }
 
