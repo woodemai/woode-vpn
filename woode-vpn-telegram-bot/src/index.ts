@@ -134,7 +134,12 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
       '📱💻 Доступно на всех устройствах</blockquote>'].join('\n')
 
 
-  await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
+  if ('callbackQuery' in ctx.update) {
+    await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
+    return;
+  }
+
+  await ctx.reply(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
 }
 
 
