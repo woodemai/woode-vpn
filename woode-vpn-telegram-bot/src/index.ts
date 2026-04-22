@@ -69,7 +69,7 @@ function postActionKeyboard(subscriptionUrl?: string) {
 }
 
 function mainMenuKeyboard(hasSubscription: boolean) {
-  const subscriptionButton = true
+  const subscriptionButton = hasSubscription
     ? Markup.button.callback('💳 Купить/Продлить подписку', 'MENU_BUY')
     : Markup.button.callback('🎁 Пробная подписка на 2 дня', 'TRIAL');
 
