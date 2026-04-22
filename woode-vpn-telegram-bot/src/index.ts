@@ -59,7 +59,6 @@ function postActionKeyboard(subscriptionUrl?: string) {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
   if (subscriptionUrl) {
-    rows.push([Markup.button.callback('Добавить в Happ', 'ACTION_HAPP')]);
     rows.push([Markup.button.callback('Как подключить в Happ', 'ACTION_HAPP_HELP')]);
     rows.push([Markup.button.callback('QR Код', 'ACTION_QR')]);
   }
@@ -96,7 +95,7 @@ function buyMenuKeyboard() {
 async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
   const message =
 
-    ['WoodeVPN ✨ — быстрый и надежный доступ в интернет! ✅',
+    ['<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅',
       '',
       'Возможности:',
 
@@ -259,10 +258,10 @@ async function renderHappInstructions(ctx: Context): Promise<void> {
   const instruction = [
     '<b>📲 Как подключить подписку в Happ</b>',
     '',
-    '1️⃣ Нажмите кнопку <b>Добавить в Happ</b> внизу.',
-    '2️⃣ Если приложение не открылось автоматически:',
-    '   • скопируйте ссылку ниже',
-    '   • вставьте в Happ вручную через Add Subscription.',
+    '1️⃣ Скопируйте ссылку ниже',
+    '2️⃣ Вставьте в Happ вручную через Add Subscription.',
+    '   • Добавить подписку',
+    '   • Вставить из буфера обмена',
     '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
     '',
     '<b>🔗 Ссылка подписки:</b>',
