@@ -4,6 +4,7 @@ export interface XuiServerConfig {
   id: string;
   country: string;
   baseUrl: string;
+  subscriptionUrl?: string;
   username: string;
   password: string;
   publicHost?: string;

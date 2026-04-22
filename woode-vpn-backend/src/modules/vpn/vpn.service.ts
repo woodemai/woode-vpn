@@ -66,11 +66,12 @@ export class VpnService {
 
     this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
 
-    const configs: string[] = [];
+    const subscriptions: string[] = [];
     const mappings: ClientMapping[] = [];
 
     for (const server of servers) {
       const serverStartedAt = Date.now();
+      const serverConfigs: string[] = [];
       const inbounds = await this.xuiService.getInbounds(server);
       const allowedInboundIds = server.inboundIds ?? [];
       const selectedInbounds = inbounds
@@ -105,7 +106,7 @@ export class VpnService {
           streamSettingsRaw: inbound.streamSettings,
         });
 
-        configs.push(config);
+        serverConfigs.push(config);
         mappings.push({
           serverId: server.id,
           country: server.country,
@@ -114,12 +115,25 @@ export class VpnService {
         });
       }
 
+      if (server.subscriptionUrl) {
+        const encodedSubscription = await this.xuiService.getSubscription(server);
+        const decodedSubscription = this.subscriptionService.decodeBase64Subscription(
+          encodedSubscription,
+        );
+        subscriptions.push(decodedSubscription);
+        this.logger.log(
+          `server subscription collected: userId=${userId}, server=${server.id}, decodedLength=${decodedSubscription.length}`,
+        );
+      } else {
+        subscriptions.push(...serverConfigs);
+      }
+
       this.logger.log(
         `server provisioning done: userId=${userId}, server=${server.id}, durationMs=${Date.now() - serverStartedAt}`,
       );
     }
 
-    if (!configs.length) {
+    if (!subscriptions.length) {
       throw new BadRequestException('No inbounds available for provisioning');
     }
 
@@ -129,22 +143,22 @@ export class VpnService {
       create: {
         userId,
         subscriptionToken: token,
-        configs: configs as unknown as Prisma.InputJsonValue,
+        configs: subscriptions as unknown as Prisma.InputJsonValue,
         clientMappings: mappings as unknown as Prisma.InputJsonValue,
         active: true,
       },
       update: {
-        configs: configs as unknown as Prisma.InputJsonValue,
+        configs: subscriptions as unknown as Prisma.InputJsonValue,
         clientMappings: mappings as unknown as Prisma.InputJsonValue,
         active: true,
       },
     });
 
-    const subscriptionText = this.subscriptionService.merge(configs);
+    const subscriptionText = this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
     const subscriptionUrl = this.buildSubscriptionUrl(profile.subscriptionToken);
 
     this.logger.log(
-      `provisionForUser finished: userId=${userId}, configs=${configs.length}, durationMs=${Date.now() - startedAt}`,
+      `provisionForUser finished: userId=${userId}, subscriptions=${subscriptions.length}, durationMs=${Date.now() - startedAt}`,
     );
 
     return {
@@ -179,11 +193,11 @@ export class VpnService {
       throw new BadRequestException('Subscription expired');
     }
 
-    const configs = Array.isArray(profile.configs)
+    const subscriptions = Array.isArray(profile.configs)
       ? (profile.configs as string[])
       : [];
 
-    return this.subscriptionService.merge(configs);
+    return this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
   }
 
   async getUserProfile(userId: number): Promise<{
@@ -216,6 +230,6 @@ export class VpnService {
 
   private buildSubscriptionUrl(token: string): string {
     const publicBaseUrl = this.configService.get<string>('app.publicBaseUrl');
-    return `${publicBaseUrl}/api/vpn/subscriptions/${token}`;
+    return `${publicBaseUrl}/sub/${token}`;
   }
 }

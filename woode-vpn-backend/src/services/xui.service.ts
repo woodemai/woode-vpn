@@ -60,8 +60,8 @@ export class XuiService {
 
   async getInbounds(server: XuiServerConfig): Promise<XuiInbound[]> {
     const list = await this.requestWithFallback<XuiInbound[]>(server, 'GET', [
-      '/inbounds/list',
-      '/panel/api/inbounds/list',
+      'inbounds/list',
+      'panel/api/inbounds/list',
     ]);
 
     return list ?? [];
@@ -72,29 +72,71 @@ export class XuiService {
     inboundId: number,
     client: XuiClientInput,
   ): Promise<void> {
-    const payload = {
-      id: inboundId,
+    const payload = new URLSearchParams({
+      id: String(inboundId),
       settings: JSON.stringify({
         clients: [
           {
             id: client.id,
+            flow: '',
             email: client.email,
-            expiryTime: client.expiryTime ?? 0,
-            totalGB: client.totalGB ?? 0,
-            enable: client.enable ?? true,
             limitIp: 0,
+            totalGB: client.totalGB ?? 0,
+            expiryTime: client.expiryTime ?? 0,
+            enable: client.enable ?? true,
             tgId: '',
-            subId: '',
+            subId: client.email,
+            comment: '',
             reset: 0,
           },
         ],
       }),
-    };
+    });
 
     await this.requestWithFallback<unknown>(server, 'POST', [
-      '/inbounds/addClient',
-      '/panel/api/inbounds/addClient',
-    ], payload);
+      'inbounds/addClient',
+      'panel/api/inbounds/addClient',
+    ], payload.toString(), {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      Accept: 'application/json, text/plain, */*',
+    });
+  }
+
+  async getSubscription(server: XuiServerConfig): Promise<string> {
+    if (!server.subscriptionUrl) {
+      throw new Error(`No subscriptionUrl configured for server ${server.id}`);
+    }
+
+    const startedAt = Date.now();
+    let response;
+    try {
+      response = await firstValueFrom(
+        this.httpService.get<string>(server.subscriptionUrl, {
+          timeout: this.requestTimeoutMs,
+          responseType: 'text',
+          headers: {
+            Accept: 'text/plain, */*',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      throw new Error(
+        `3x-ui subscription request failed for server ${server.id} after ${this.requestTimeoutMs}ms: ${message}`,
+      );
+    }
+
+    if (typeof response.data !== 'string' || !response.data.trim()) {
+      throw new Error(`3x-ui subscription response is empty for server ${server.id}`);
+    }
+
+    this.logger.log(
+      `3x-ui subscription fetched: server=${server.id}, durationMs=${Date.now() - startedAt}`,
+    );
+
+    return response.data.trim();
   }
 
   private async requestWithFallback<T>(
@@ -102,6 +144,7 @@ export class XuiService {
     method: HttpMethod,
     paths: string[],
     data?: unknown,
+    extraHeaders?: Record<string, string>,
   ): Promise<T | undefined> {
     const startedAt = Date.now();
     await this.ensureLogin(server);
@@ -109,7 +152,7 @@ export class XuiService {
     let lastError: unknown;
     for (const path of paths) {
       try {
-        const result = await this.request<T>(server, method, path, data);
+        const result = await this.request<T>(server, method, path, data, extraHeaders);
         this.logger.log(
           `3x-ui request success: server=${server.id}, method=${method}, path=${path}, durationMs=${Date.now() - startedAt}`,
         );
@@ -136,18 +179,21 @@ export class XuiService {
     const body = new URLSearchParams({
       username: server.username,
       password: server.password,
+      twoFactorCode: '',
     });
 
     let response;
     try {
       response = await firstValueFrom(
         this.httpService.post<XuiEnvelope<unknown>>(
-          `${server.baseUrl}/login`,
+          this.buildServerUrl(server, 'login'),
           body.toString(),
           {
             timeout: this.requestTimeoutMs,
             headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+              Accept: 'application/json, text/plain, */*',
             },
           },
         ),
@@ -182,22 +228,25 @@ export class XuiService {
     method: HttpMethod,
     path: string,
     data?: unknown,
+    extraHeaders?: Record<string, string>,
   ): Promise<T | undefined> {
     const cookie = this.sessionCookie.get(server.id);
     let response;
     try {
       response = await firstValueFrom(
         this.httpService.request<XuiEnvelope<T>>({
-          baseURL: server.baseUrl,
-          url: path,
+          url: this.buildServerUrl(server, path),
           method,
           data,
           timeout: this.requestTimeoutMs,
-          headers: cookie
-            ? {
-                Cookie: cookie,
-              }
-            : undefined,
+          headers: {
+            ...(cookie
+              ? {
+                  Cookie: cookie,
+                }
+              : {}),
+            ...(extraHeaders ?? {}),
+          },
         }),
       );
     } catch (error) {
@@ -217,5 +266,11 @@ export class XuiService {
     }
 
     return response.data.obj;
+  }
+
+  private buildServerUrl(server: XuiServerConfig, path: string): string {
+    const base = server.baseUrl.endsWith('/') ? server.baseUrl : `${server.baseUrl}/`;
+    const normalizedPath = path.replace(/^\/+/, '');
+    return new URL(normalizedPath, base).toString();
   }
 }

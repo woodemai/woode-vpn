@@ -18,6 +18,34 @@ interface StreamSettings {
 
 @Injectable()
 export class SubscriptionService {
+  encodeBase64Subscription(raw: string): string {
+    return Buffer.from(raw, 'utf8').toString('base64');
+  }
+
+  decodeBase64Subscription(raw: string): string {
+    const normalized = raw.replace(/\s+/g, '');
+    return Buffer.from(normalized, 'base64').toString('utf8');
+  }
+
+  mergePlainSubscriptions(subscriptions: string[]): string {
+    const uniqueLines = new Set<string>();
+
+    for (const subscription of subscriptions) {
+      for (const line of subscription.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (trimmed) {
+          uniqueLines.add(trimmed);
+        }
+      }
+    }
+
+    return Array.from(uniqueLines).join('\n');
+  }
+
+  mergeEncodedSubscriptions(subscriptions: string[]): string {
+    return this.encodeBase64Subscription(this.mergePlainSubscriptions(subscriptions));
+  }
+
   buildConfig(
     input: {
       uuid: string;
