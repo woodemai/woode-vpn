@@ -94,14 +94,26 @@ export class XuiService {
       }),
     });
 
-    await this.requestWithFallback<unknown>(server, 'POST', [
-      'inbounds/addClient',
-      'panel/api/inbounds/addClient',
-    ], payload.toString(), {
-      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-      'X-Requested-With': 'XMLHttpRequest',
-      Accept: 'application/json, text/plain, */*',
-    });
+    try {
+      await this.requestWithFallback<unknown>(server, 'POST', [
+        'inbounds/addClient',
+        'panel/api/inbounds/addClient',
+      ], payload.toString(), {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        Accept: 'application/json, text/plain, */*',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      if (message.toLowerCase().includes('duplicate email')) {
+        this.logger.warn(
+          `3x-ui addClient duplicate ignored: server=${server.id}, inboundId=${inboundId}, email=${client.email}`,
+        );
+        return;
+      }
+
+      throw error;
+    }
   }
 
   async getSubscription(server: XuiServerConfig, subscriptionToken: string): Promise<string> {
