@@ -37,7 +37,21 @@ type CallbackData =
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
-  return `happ://add/${subscriptionUrl}`;
+  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
+}
+
+async function editMessageTextOrCaption(
+  ctx: Context,
+  text: string,
+  subscriptionUrl?: string,
+): Promise<void> {
+  try {
+    await ctx.editMessageText(text, {parse_mode: 'MarkdownV2', ...postActionKeyboard(subscriptionUrl)});
+    return;
+  } catch {
+    // If the current message is media, fallback to caption edit.
+    await ctx.editMessageCaption(text, {parse_mode: 'MarkdownV2', ...postActionKeyboard(subscriptionUrl)});
+  }
 }
 
 function postActionKeyboard(subscriptionUrl?: string) {
@@ -88,11 +102,11 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, mainMenuKeyboard(hasSubscription));
+    await ctx.editMessageText(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
     return;
   }
 
-  await ctx.reply(message, mainMenuKeyboard(hasSubscription));
+  await ctx.reply(message, {parse_mode: 'MarkdownV2', ...mainMenuKeyboard(hasSubscription)});
 }
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
@@ -142,13 +156,17 @@ async function renderConfig(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await ctx.editMessageText('Активная подписка не найдена. Сначала выберите план.', postActionKeyboard());
+    await editMessageTextOrCaption(
+      ctx,
+      'Активная подписка не найдена. Сначала выберите план.',
+    );
     return;
   }
 
-  await ctx.editMessageText(
+  await editMessageTextOrCaption(
+    ctx,
     `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
-    postActionKeyboard(profile.subscriptionUrl),
+    profile.subscriptionUrl,
   );
 }
 
@@ -172,18 +190,29 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
     errorCorrectionLevel: 'M',
   });
 
-  await ctx.replyWithPhoto(Input.fromBuffer(qrBuffer, 'subscription-qr.png'), {
-    caption: [
-      'QR для добавления подписки в Happ.',
-      'Если QR не открывается автоматически, используйте кнопку «Добавить в Happ».',
-    ].join('\n'),
-    ...postActionKeyboard(profile.subscriptionUrl),
-  });
+  const caption = [
+    'QR для добавления подписки в клиент.',
+    '',
+    `Ваша ссылка на подписку: ${profile.subscriptionUrl}`,
+  ].join('\n');
 
-  await ctx.editMessageText(
-    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
-    postActionKeyboard(profile.subscriptionUrl),
-  );
+  try {
+    await ctx.editMessageMedia(
+      {
+        type: 'photo',
+        media: Input.fromBuffer(qrBuffer, 'subscription-qr.png'),
+        caption,
+      },
+      postActionKeyboard(profile.subscriptionUrl),
+    );
+  } catch {
+    // Some Telegram messages cannot be converted to media; replace visually with one photo message.
+    await ctx.deleteMessage().catch(() => undefined);
+    await ctx.replyWithPhoto(Input.fromBuffer(qrBuffer, 'subscription-qr.png'), {
+      caption,
+      ...postActionKeyboard(profile.subscriptionUrl),
+    });
+  }
 }
 
 async function sendHappDeepLink(ctx: Context): Promise<void> {
@@ -199,14 +228,14 @@ async function sendHappDeepLink(ctx: Context): Promise<void> {
   }
 
   const happUrl = buildHappAddUrl(profile.subscriptionUrl);
-  await ctx.reply(
-    `Ссылка для Happ:\n${happUrl}`,
-    postActionKeyboard(profile.subscriptionUrl),
-  );
-
-  await ctx.editMessageText(
-    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
-    postActionKeyboard(profile.subscriptionUrl),
+  await editMessageTextOrCaption(
+    ctx,
+    [
+      `Ваша ссылка на подписку: ${profile.subscriptionUrl}`,
+      `Ссылка для Happ: ${happUrl}`,
+      `[Ссылка для Happ](${happUrl})`,
+    ].join('\n'),
+    profile.subscriptionUrl,
   );
 }
 
