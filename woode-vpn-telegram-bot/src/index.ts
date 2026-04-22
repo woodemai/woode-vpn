@@ -342,7 +342,6 @@ bot.on('callback_query', async (ctx) => {
   }
 
   await ctx.answerCbQuery();
-  await ctx.editMessageText('⏳ Обработка...');
 
   await safeHandleCallback(ctx, async () => {
     if (data === 'MENU_MAIN') {
