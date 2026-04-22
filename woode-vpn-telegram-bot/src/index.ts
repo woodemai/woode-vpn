@@ -149,13 +149,14 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
     '',
     'Вам выдана пробная подписка!',
     `Активна до: ${endsAt.toLocaleString()}`,
+    'Ваша ссылка на подписку',
     `Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`,
     '',
     'Возможности:',
-    '> 🚀 Высокая скорость',
-    '> 🔄 Надежность',
-    '> 💬 Быстрая поддержка',
-    '> 📱💻 Доступно на всех устойствах',
+    '<blockquote>🚀 Высокая скорость',
+    '🔄 Надежность',
+    '💬 Быстрая поддержка',
+    '📱💻 Доступно на всех устройствах</blockquote>'
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
