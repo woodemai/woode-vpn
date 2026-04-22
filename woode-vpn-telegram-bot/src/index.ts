@@ -134,12 +134,7 @@ async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): P
       '📱💻 Доступно на всех устройствах</blockquote>'].join('\n')
 
 
-  if ('callbackQuery' in ctx.update) {
-    await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
-    return;
-  }
-
-  await ctx.reply(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
+  await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
 }
 
 
@@ -150,7 +145,7 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
     'Вам выдана пробная подписка!',
     `Активна до: ${endsAt.toLocaleString()}`,
     'Ваша ссылка на подписку',
-    `Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`,
+    `<code>${subscriptionUrl}</code>`,
     '',
     'Возможности:',
     '<blockquote>🚀 Высокая скорость',
