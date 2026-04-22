@@ -94,15 +94,16 @@ function buyMenuKeyboard() {
 
 
 async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
-  const message = [
-    'WoodeVPN ✨ - быстрый и надежный доступ в интернет! ✅',
-    '',
-    'Возможности:',
-    '> 🚀 Высокая скорость',
-    '> 🔄 Надежность',
-    '> 💬 Быстрая поддержка',
-    '> 📱💻 Доступно на всех устройствах',
-  ].join('\n');
+  const message = `
+    WoodeVPN ✨ — быстрый и надежный доступ в интернет! ✅
+
+    Возможности:
+
+    <blockquote>🚀 Высокая скорость</blockquote>
+    <blockquote>🔄 Надежность</blockquote>
+    <blockquote>💬 Быстрая поддержка</blockquote>
+    <blockquote>📱💻 Доступно на всех устройствах</blockquote>
+  `;
 
   if ('callbackQuery' in ctx.update) {
     await ctx.editMessageText(message, {parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription)});
@@ -236,8 +237,6 @@ async function sendHappDeepLink(ctx: Context): Promise<void> {
     ctx,
     [
       `Ваша ссылка на подписку: <code>${profile.subscriptionUrl}</code>`,
-      `Ссылка для Happ: <code>${happUrl}</code>`,
-      `[Ссылка для Happ](${happUrl})`,
     ].join('\n'),
     profile.subscriptionUrl,
   );
@@ -267,9 +266,6 @@ async function renderHappInstructions(ctx: Context): Promise<void> {
     '',
     '<b>🔗 Ссылка подписки:</b>',
     `<code>${profile.subscriptionUrl}</code>`,
-    '',
-    '<b>🚀 Deep Link Happ:</b>',
-    `<code>${happUrl}</code>`,
   ].join('\n');
 
   await ctx.editMessageText(instruction, {
