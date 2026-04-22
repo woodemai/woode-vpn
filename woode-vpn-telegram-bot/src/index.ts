@@ -197,7 +197,8 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
   const caption = [
     'QR для добавления подписки в клиент.',
     '',
-    `Ваша ссылка на подписку: <code>${profile.subscriptionUrl}</code>`,
+    'Ваша ссылка на подписку:',
+    `<code>${profile.subscriptionUrl}</code>`,
   ].join('\n');
 
   try {
@@ -206,6 +207,7 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
         type: 'photo',
         media: Input.fromBuffer(qrBuffer, 'subscription-qr.png'),
         caption,
+        parse_mode: 'HTML',
       },
       postActionKeyboard(profile.subscriptionUrl),
     );
@@ -258,7 +260,7 @@ async function renderHappInstructions(ctx: Context): Promise<void> {
     '<b>📲 Как подключить подписку в Happ</b>',
     '',
     '1️⃣ Скопируйте ссылку ниже',
-    '2️⃣ Вставьте в Happ вручную через Add Subscription.',
+    '2️⃣ Вставьте в Happ вручную через',
     '   • Добавить подписку',
     '   • Вставить из буфера обмена',
     '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
