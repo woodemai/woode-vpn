@@ -1,5 +1,6 @@
 import 'dotenv/config';
-import { Context, Markup, Telegraf } from 'telegraf';
+import { Context, Input, Markup, Telegraf } from 'telegraf';
+import QRCode from 'qrcode';
 import { BackendClient } from './backend.js';
 
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -31,7 +32,29 @@ type CallbackData =
   | 'MENU_BUY'
   | 'TRIAL'
   | 'ACTION_CONFIG'
+  | 'ACTION_QR'
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
+
+function buildHappAddUrl(subscriptionUrl: string): string {
+  return `happ://add/${subscriptionUrl}`;
+}
+
+function postActionKeyboard(subscriptionUrl?: string) {
+  const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
+
+  if (subscriptionUrl) {
+    rows.push([
+      Markup.button.url('Добавить в Happ', buildHappAddUrl(subscriptionUrl)),
+    ]);
+    rows.push([Markup.button.callback('QR Код', 'ACTION_QR')]);
+  }
+
+  rows.push([Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')]);
+  rows.push([Markup.button.callback('Докупить', 'MENU_BUY')]);
+  rows.push([Markup.button.callback('Назад к меню', 'MENU_MAIN')]);
+
+  return Markup.inlineKeyboard(rows);
+}
 
 function mainMenuKeyboard(hasSubscription: boolean) {
   const subscriptionButton = hasSubscription
@@ -50,14 +73,6 @@ function buyMenuKeyboard() {
     [Markup.button.callback('90 дней', 'BUY_DAYS_90')],
     [Markup.button.callback('180 дней', 'BUY_DAYS_180')],
     [Markup.button.callback('365 дней', 'BUY_DAYS_365')],
-    [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
-  ]);
-}
-
-function postActionKeyboard() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('Получить конфиг', 'ACTION_CONFIG')],
-    [Markup.button.callback('Докупить', 'MENU_BUY')],
     [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
   ]);
 }
@@ -97,11 +112,11 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
   ].join('\n');
 
   if ('callbackQuery' in ctx.update) {
-    await ctx.editMessageText(message, postActionKeyboard());
+    await ctx.editMessageText(message, postActionKeyboard(subscriptionUrl));
     return;
   }
 
-  await ctx.reply(message, postActionKeyboard());
+  await ctx.reply(message, postActionKeyboard(subscriptionUrl));
 }
 
 async function renderBuyMenu(ctx: Context): Promise<void> {
@@ -132,7 +147,44 @@ async function renderConfig(ctx: Context): Promise<void> {
     return;
   }
 
-  await ctx.editMessageText(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`, postActionKeyboard());
+  await ctx.editMessageText(
+    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+    postActionKeyboard(profile.subscriptionUrl),
+  );
+}
+
+async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
+  const userId = await registerAndGetUserId(ctx);
+  const profile = await backend.getProfile(userId);
+
+  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
+    await ctx.editMessageText(
+      'Активная подписка не найдена. Сначала выберите план.',
+      postActionKeyboard(),
+    );
+    return;
+  }
+
+  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
+  const qrBuffer = await QRCode.toBuffer(happUrl, {
+    type: 'png',
+    margin: 2,
+    width: 700,
+    errorCorrectionLevel: 'M',
+  });
+
+  await ctx.replyWithPhoto(Input.fromBuffer(qrBuffer, 'subscription-qr.png'), {
+    caption: [
+      'QR для добавления подписки в Happ.',
+      'Если QR не открывается автоматически, используйте кнопку «Добавить в Happ».',
+    ].join('\n'),
+    ...postActionKeyboard(profile.subscriptionUrl),
+  });
+
+  await ctx.editMessageText(
+    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+    postActionKeyboard(profile.subscriptionUrl),
+  );
 }
 
 async function processBuyByDays(ctx: Context, days: number): Promise<void> {
@@ -150,7 +202,7 @@ async function processBuyByDays(ctx: Context, days: number): Promise<void> {
       '',
       'Включает все настроенные страны и доступные соединения.',
     ].join('\n'),
-    postActionKeyboard(),
+    postActionKeyboard(result.subscriptionUrl),
   );
 }
 
@@ -211,6 +263,11 @@ bot.on('callback_query', async (ctx) => {
       return;
     }
 
+    if (data === 'ACTION_QR') {
+      await renderSubscriptionQrCode(ctx);
+      return;
+    }
+
     if (data.startsWith('BUY_DAYS_')) {
       const days = Number(data.replace('BUY_DAYS_', ''));
       if (!DAY_PLANS.includes(days as (typeof DAY_PLANS)[number])) {
@@ -242,7 +299,10 @@ bot.command('get_config', async (ctx) => {
       await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
       return;
     }
-    await ctx.reply(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`);
+    await ctx.reply(
+      `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+      postActionKeyboard(profile.subscriptionUrl),
+    );
   });
 });
 
@@ -254,7 +314,10 @@ bot.command('config', async (ctx) => {
       await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
       return;
     }
-    await ctx.reply(`Ваша ссылка на подписку:\n${profile.subscriptionUrl}`);
+    await ctx.reply(
+      `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+      postActionKeyboard(profile.subscriptionUrl),
+    );
   });
 });
 
