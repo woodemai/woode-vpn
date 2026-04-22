@@ -24,6 +24,7 @@ interface XuiInbound {
 interface XuiClientInput {
   id: string;
   email: string;
+  subId?: string;
   expiryTime?: number;
   totalGB?: number;
   enable?: boolean;
@@ -85,7 +86,7 @@ export class XuiService {
             expiryTime: client.expiryTime ?? 0,
             enable: client.enable ?? true,
             tgId: '',
-            subId: client.email,
+            subId: client.subId ?? client.email,
             comment: '',
             reset: 0,
           },
@@ -103,16 +104,25 @@ export class XuiService {
     });
   }
 
-  async getSubscription(server: XuiServerConfig): Promise<string> {
+  async getSubscription(server: XuiServerConfig, subscriptionToken: string): Promise<string> {
     if (!server.subscriptionUrl) {
       throw new Error(`No subscriptionUrl configured for server ${server.id}`);
     }
 
+    const base = server.subscriptionUrl.endsWith('/')
+      ? server.subscriptionUrl
+      : `${server.subscriptionUrl}/`;
+    const subscriptionUrl = `${base}${encodeURIComponent(subscriptionToken)}`;
+
     const startedAt = Date.now();
+    this.logger.log(
+      `3x-ui subscription fetch started: server=${server.id}, url=${subscriptionUrl}`,
+    );
+
     let response;
     try {
       response = await firstValueFrom(
-        this.httpService.get<string>(server.subscriptionUrl, {
+        this.httpService.get<string>(subscriptionUrl, {
           timeout: this.requestTimeoutMs,
           responseType: 'text',
           headers: {
@@ -133,7 +143,7 @@ export class XuiService {
     }
 
     this.logger.log(
-      `3x-ui subscription fetched: server=${server.id}, durationMs=${Date.now() - startedAt}`,
+      `3x-ui subscription fetched: server=${server.id}, durationMs=${Date.now() - startedAt}, responseLength=${response.data.trim().length}`,
     );
 
     return response.data.trim();

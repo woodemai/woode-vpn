@@ -66,6 +66,7 @@ export class VpnService {
 
     this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
 
+    const token = randomUUID();
     const subscriptions: string[] = [];
     const mappings: ClientMapping[] = [];
 
@@ -93,6 +94,7 @@ export class VpnService {
         await this.xuiService.addClient(server, inbound.id, {
           id: uuid,
           email,
+          subId: token,
           enable: true,
         });
 
@@ -116,7 +118,7 @@ export class VpnService {
       }
 
       if (server.subscriptionUrl) {
-        const encodedSubscription = await this.xuiService.getSubscription(server);
+        const encodedSubscription = await this.xuiService.getSubscription(server, token);
         const decodedSubscription = this.subscriptionService.decodeBase64Subscription(
           encodedSubscription,
         );
@@ -137,7 +139,6 @@ export class VpnService {
       throw new BadRequestException('No inbounds available for provisioning');
     }
 
-    const token = randomUUID();
     const profile = await this.prisma.vpnProfile.upsert({
       where: { userId },
       create: {
