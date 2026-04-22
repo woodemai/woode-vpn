@@ -165,14 +165,14 @@ async function renderConfig(ctx: Context): Promise<void> {
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
     await editMessageTextOrCaption(
       ctx,
-      'Активная подписка не найдена. Сначала выберите план.',
+      escapeMarkdownV2('Активная подписка не найдена. Сначала выберите план.'),
     );
     return;
   }
 
   await editMessageTextOrCaption(
     ctx,
-    `Ваша ссылка на подписку:\n${profile.subscriptionUrl}`,
+    escapeMarkdownV2(`Ваша ссылка на подписку:\n\`${profile.subscriptionUrl}\``),
     profile.subscriptionUrl,
   );
 }
