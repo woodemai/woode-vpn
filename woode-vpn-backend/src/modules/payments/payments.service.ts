@@ -40,14 +40,22 @@ export class PaymentsService {
       throw new BadRequestException('Invalid YooKassa webhook payload: payment id is missing');
     }
 
-    // In dev mode, skip payment verification
-    const payment = isDev
-      ? { id: rawPaymentId, amount: { value: '100' }, metadata: dto.object?.metadata ?? {} }
+    const webhookMetadata = this.extractMetadata(dto.object);
+
+    // In dev mode, skip payment verification and emulate a successful payment.
+    const payment: YooKassaPayment = isDev
+      ? {
+          id: rawPaymentId,
+          status: 'succeeded',
+          paid: true,
+          amount: { value: '100' },
+          metadata: webhookMetadata,
+        }
       : await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};
 
-    const rawUserId = metadata.userId;
+    const rawUserId = metadata.userId ?? '';
     if (!rawUserId) {
       throw new BadRequestException('YooKassa payment metadata.userId is required');
     }
@@ -86,22 +94,7 @@ export class PaymentsService {
   async confirmPayment(dto: ConfirmPaymentDto) {
     const isDev = process.env.IS_DEV === 'true';
 
-    if (dto.paymentId && !isDev) {
-      const existing = await this.prisma.subscription.findFirst({
-        where: { paymentId: dto.paymentId },
-      });
-
-      if (existing) {
-        const profile = await this.vpnService.getUserProfile(existing.userId);
-
-        return {
-          userId: existing.userId,
-          endsAt: existing.endsAt,
-          subscriptionUrl: profile.subscriptionUrl,
-          alreadyProcessed: true,
-        };
-      }
-    } else if (dto.paymentId && isDev) {
+    if (dto.paymentId) {
       const existing = await this.prisma.subscription.findFirst({
         where: { paymentId: dto.paymentId },
       });
@@ -149,7 +142,7 @@ export class PaymentsService {
         status: SubscriptionStatus.ACTIVE,
         startsAt,
         endsAt,
-        paymentId: dto.paymentId || `dev-${Date.now()}`,
+        paymentId: dto.paymentId ?? (isDev ? `dev-${Date.now()}` : undefined),
         amountCents: dto.amountCents,
       },
     });
@@ -209,5 +202,18 @@ export class PaymentsService {
     }
 
     return Math.round(parsed * 100);
+  }
+
+  private extractMetadata(rawObject: Record<string, unknown>): Record<string, string> {
+    const rawMetadata = rawObject.metadata;
+    if (!rawMetadata || typeof rawMetadata !== 'object' || Array.isArray(rawMetadata)) {
+      return {};
+    }
+
+    const metadataEntries = Object.entries(rawMetadata as Record<string, unknown>)
+      .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+      .map(([key, value]) => [key, String(value)]);
+
+    return Object.fromEntries(metadataEntries);
   }
 }
