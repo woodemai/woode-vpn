@@ -1,3 +1,9 @@
+{
+  servers {
+    protocols h1 h2
+  }
+}
+
 {$APP_DOMAIN:localhost} {
   bind 0.0.0.0
   encode gzip
