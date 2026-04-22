@@ -38,7 +38,7 @@ type CallbackData =
   | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
-  return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
+  return `happ://add/${subscriptionUrl}`;
 }
 
 async function editMessageTextOrCaption(
@@ -122,7 +122,7 @@ async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscri
     '',
     escapeMarkdownV2('Вам выдана пробная подписка!'),
     escapeMarkdownV2(`Активна до: ${endsAt.toLocaleString()}`),
-    escapeMarkdownV2(`Ваша ссылка на подписку: \`${subscriptionUrl}\``),
+    escapeMarkdownV2(`Ваша ссылка на подписку: <code>${subscriptionUrl}</code>`),
     '',
     'Возможности:',
     '> 🚀 Высокая скорость',
@@ -172,7 +172,7 @@ async function renderConfig(ctx: Context): Promise<void> {
 
   await editMessageTextOrCaption(
     ctx,
-    escapeMarkdownV2(`Ваша ссылка на подписку:\n\`${profile.subscriptionUrl}\``),
+    escapeMarkdownV2(`Ваша ссылка на подписку:\n\<code>${profile.subscriptionUrl}</code>`),
     profile.subscriptionUrl,
   );
 }
@@ -200,7 +200,7 @@ async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
   const caption = [
     'QR для добавления подписки в клиент.',
     '',
-    `Ваша ссылка на подписку: ${profile.subscriptionUrl}`,
+    `Ваша ссылка на подписку: <code>${profile.subscriptionUrl}</code>`,
   ].join('\n');
 
   try {
@@ -238,8 +238,8 @@ async function sendHappDeepLink(ctx: Context): Promise<void> {
   await editMessageTextOrCaption(
     ctx,
     [
-      `Ваша ссылка на подписку: ${profile.subscriptionUrl}`,
-      `Ссылка для Happ: ${happUrl}`,
+      `Ваша ссылка на подписку: <code>${profile.subscriptionUrl}</code>`,
+      `Ссылка для Happ: <code>${happUrl}</code>`,
       `[Ссылка для Happ](${happUrl})`,
     ].join('\n'),
     profile.subscriptionUrl,
