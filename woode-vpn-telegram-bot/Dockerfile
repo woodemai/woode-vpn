@@ -20,5 +20,6 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json pnpm-lock.yaml ./
+COPY src/logo.jpg ./logo.jpg
 
 CMD ["node", "dist/index.js"]
