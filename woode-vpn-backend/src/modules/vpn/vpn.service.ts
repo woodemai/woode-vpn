@@ -744,48 +744,36 @@ export class VpnService {
       return false;
     }
 
-    await this.prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS vpn_hwid_bindings (
-        id SERIAL PRIMARY KEY,
-        profile_id INTEGER NOT NULL REFERENCES "VpnProfile"(id) ON DELETE CASCADE,
-        hwid VARCHAR(128) NOT NULL,
-        first_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
-        UNIQUE(profile_id, hwid)
-      );
-    `);
-
-    type ExistingRow = { id: number };
-    const existing = await this.prisma.$queryRawUnsafe<ExistingRow[]>(
-      `SELECT id FROM vpn_hwid_bindings WHERE profile_id = $1 AND hwid = $2 LIMIT 1`,
-      profileId,
-      hwid,
-    );
-
-    if (existing.length) {
-      await this.prisma.$executeRawUnsafe(
-        `UPDATE vpn_hwid_bindings SET last_seen_at = NOW() WHERE profile_id = $1 AND hwid = $2`,
+    const existing = await this.prisma.vpnHwidBinding.findFirst({
+      where: {
         profileId,
         hwid,
-      );
+      },
+      select: { id: true },
+    });
+
+    if (existing) {
+      await this.prisma.vpnHwidBinding.update({
+        where: { id: existing.id },
+        data: { lastSeenAt: new Date() },
+      });
       return false;
     }
 
-    type CountRow = { count: string };
-    const countRows = await this.prisma.$queryRawUnsafe<CountRow[]>(
-      `SELECT COUNT(*)::text AS count FROM vpn_hwid_bindings WHERE profile_id = $1`,
-      profileId,
-    );
-    const currentCount = Number(countRows[0]?.count ?? 0);
+    const currentCount = await this.prisma.vpnHwidBinding.count({
+      where: { profileId },
+    });
+
     if (currentCount >= deviceLimit) {
       return true;
     }
 
-    await this.prisma.$executeRawUnsafe(
-      `INSERT INTO vpn_hwid_bindings (profile_id, hwid) VALUES ($1, $2)`,
-      profileId,
-      hwid,
-    );
+    await this.prisma.vpnHwidBinding.create({
+      data: {
+        profileId,
+        hwid,
+      },
+    });
 
     return false;
   }
