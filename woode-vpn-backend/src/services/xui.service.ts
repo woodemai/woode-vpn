@@ -19,6 +19,13 @@ interface XuiInbound {
   remark?: string;
   settings?: string;
   streamSettings?: string;
+  clientStats?: XuiClientStat[];
+}
+
+interface XuiClientStat {
+  subId?: string;
+  up?: number;
+  down?: number;
 }
 
 interface XuiClientInput {
@@ -66,6 +73,33 @@ export class XuiService {
     ]);
 
     return list ?? [];
+  }
+
+  async getUsageBySubId(
+    server: XuiServerConfig,
+    subId: string,
+  ): Promise<{ upload: number; download: number }> {
+    const inbounds = await this.getInbounds(server);
+
+    let upload = 0;
+    let download = 0;
+
+    for (const inbound of inbounds) {
+      const clientStats = Array.isArray(inbound.clientStats)
+        ? inbound.clientStats
+        : [];
+
+      for (const client of clientStats) {
+        if (client.subId !== subId) {
+          continue;
+        }
+
+        upload += Number(client.up ?? 0);
+        download += Number(client.down ?? 0);
+      }
+    }
+
+    return { upload, download };
   }
 
   async addClient(
@@ -264,8 +298,8 @@ export class XuiService {
           headers: {
             ...(cookie
               ? {
-                  Cookie: cookie,
-                }
+                Cookie: cookie,
+              }
               : {}),
             ...(extraHeaders ?? {}),
           },

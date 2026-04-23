@@ -268,7 +268,8 @@ export class VpnService {
       Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
     );
     const expireTs = Math.floor(activeSubscription.endsAt.getTime() / 1000);
-    const userInfo = `upload=0; download=0; total=${totalBytes}; expire=${expireTs}`;
+    const usage = await this.fetchUsageTotals(token);
+    const userInfo = `upload=${usage.upload}; download=${usage.download}; total=${totalBytes}; expire=${expireTs}`;
 
     const title = this.configService.get<string>('app.subscription.title') ?? 'Woode VPN';
     const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
@@ -343,6 +344,37 @@ export class VpnService {
     }
 
     return liveSubscriptions;
+  }
+
+  private async fetchUsageTotals(
+    token: string,
+  ): Promise<{ upload: number; download: number }> {
+    const servers = this.xuiService.getServers();
+    if (!servers.length) {
+      return { upload: 0, download: 0 };
+    }
+
+    const usagePerServer = await Promise.all(
+      servers.map(async (server) => {
+        try {
+          return await this.xuiService.getUsageBySubId(server, token);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'unknown error';
+          this.logger.warn(
+            `usage fetch failed: server=${server.id}, token=${token}, error=${message}`,
+          );
+          return { upload: 0, download: 0 };
+        }
+      }),
+    );
+
+    return usagePerServer.reduce(
+      (acc, item) => ({
+        upload: acc.upload + item.upload,
+        download: acc.download + item.download,
+      }),
+      { upload: 0, download: 0 },
+    );
   }
 
   async getUserProfile(userId: number): Promise<{
