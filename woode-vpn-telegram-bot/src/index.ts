@@ -27,6 +27,14 @@ const bot = new Telegraf(botToken, {
 });
 
 const DAY_PLANS = [30, 90, 180, 365] as const;
+const DEVICE_PLANS = [5, 10, 15] as const;
+
+const PRICE_BY_PLAN: Record<(typeof DAY_PLANS)[number], Record<(typeof DEVICE_PLANS)[number], number>> = {
+  30: { 5: 100, 10: 150, 15: 200 },
+  90: { 5: 270, 10: 400, 15: 540 },
+  180: { 5: 510, 10: 760, 15: 1000 },
+  365: { 5: 1000, 10: 1450, 15: 2000 },
+};
 
 const defaultCaption = [
   '<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅',
@@ -42,10 +50,39 @@ type CallbackData =
   | 'MENU_BUY'
   | 'TRIAL'
   | 'ACTION_CONFIG'
-  | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
+  | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`
+  | `BUY_DEVICES_${(typeof DAY_PLANS)[number]}_${(typeof DEVICE_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
   return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
+}
+
+function formatMoscowDate(endsAt: string | Date): string {
+  const date = endsAt instanceof Date ? endsAt : new Date(endsAt);
+  const formatted = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+
+  return `${formatted.replace(',', '')} (МСК)`;
+}
+
+function formatRemainingTime(endsAt: string | Date): string {
+  const endTs = endsAt instanceof Date ? endsAt.getTime() : new Date(endsAt).getTime();
+  const nowTs = Date.now();
+  const diffMs = Math.max(0, endTs - nowTs);
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${days} дн ${hours} ч ${minutes} мин`;
 }
 
 async function renderMediaMessage(
@@ -100,8 +137,6 @@ function postActionKeyboard() {
     Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
   ]);
 
-  rows.push([Markup.button.callback('🔙 Назад к меню', 'MENU_MAIN')]);
-
   return Markup.inlineKeyboard(rows);
 }
 
@@ -120,12 +155,24 @@ function mainMenuKeyboard(hasSubscription: boolean) {
   ]);
 }
 
-async function buildSubscriptionCaption(subscriptionUrl: string): Promise<string> {
+async function buildSubscriptionCaption(
+  subscriptionUrl: string,
+  endsAt?: string | Date,
+): Promise<string> {
+  const infoLines = endsAt
+    ? [
+      `<b>📅 Дата окончания:</b> ${formatMoscowDate(endsAt)}`,
+      `<b>⏳ Осталось времени:</b> ${formatRemainingTime(endsAt)}`,
+      '',
+    ]
+    : [];
+
   return [
     '<b>WoodeVPN ✨</b>',
     '',
     '✅ У вас активна подписка!',
     '',
+    ...infoLines,
     '<b>📲 Как подключить подписку в Happ</b>',
     '',
     '1️⃣ Откройте приложение Happ',
@@ -155,9 +202,44 @@ function buyMenuKeyboard() {
   ]);
 }
 
+function deviceMenuKeyboard(days: (typeof DAY_PLANS)[number]) {
+  const dayPrices = PRICE_BY_PLAN[days];
+
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`5 устройств - ${dayPrices[5]} ₽`, `BUY_DEVICES_${days}_5`)],
+    [Markup.button.callback(`10 устройств - ${dayPrices[10]} ₽`, `BUY_DEVICES_${days}_10`)],
+    [Markup.button.callback(`15 устройств - ${dayPrices[15]} ₽`, `BUY_DEVICES_${days}_15`)],
+    [Markup.button.callback('Назад к периодам', 'MENU_BUY')],
+    [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
+  ]);
+}
+
+function buildDeviceCaption(days: (typeof DAY_PLANS)[number]): string {
+  const dayPrices = PRICE_BY_PLAN[days];
+
+  return [
+    `<b>Выберите количество устройств на ${days} дней:</b>`,
+    '',
+    `5 устройств - ${dayPrices[5]} ₽`,
+    `10 устройств - ${dayPrices[10]} ₽`,
+    `15 устройств - ${dayPrices[15]} ₽`,
+  ].join('\n');
+}
+
+function resolvePlanPrice(
+  days: (typeof DAY_PLANS)[number],
+  devices: (typeof DEVICE_PLANS)[number],
+): number {
+  return PRICE_BY_PLAN[days][devices];
+}
 
 
-async function renderMainMenu(ctx: Context, subscriptionUrl?: string): Promise<void> {
+
+async function renderMainMenu(
+  ctx: Context,
+  subscriptionUrl?: string,
+  endsAt?: string,
+): Promise<void> {
   if (!subscriptionUrl) {
     await renderMediaMessage(ctx, defaultCaption, {
       keyboard: mainMenuKeyboard(false),
@@ -165,7 +247,7 @@ async function renderMainMenu(ctx: Context, subscriptionUrl?: string): Promise<v
     return;
   }
 
-  const subscriptionCaption = await buildSubscriptionCaption(subscriptionUrl);
+  const subscriptionCaption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
   await renderMediaMessage(ctx, subscriptionCaption, {
     subscriptionUrl,
     keyboard: postActionKeyboard(),
@@ -174,7 +256,7 @@ async function renderMainMenu(ctx: Context, subscriptionUrl?: string): Promise<v
 
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
-  const caption = await buildSubscriptionCaption(subscriptionUrl);
+  const caption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
   const captionWithExpiry = [
     `Активна до: ${endsAt.toLocaleString('ru-RU')}`,
     '',
@@ -191,6 +273,17 @@ async function renderBuyMenu(ctx: Context, subscriptionUrl?: string): Promise<vo
   await renderMediaMessage(ctx, buildBuyCaption(), {
     subscriptionUrl,
     keyboard: buyMenuKeyboard(),
+  });
+}
+
+async function renderDeviceMenu(
+  ctx: Context,
+  days: (typeof DAY_PLANS)[number],
+  subscriptionUrl?: string,
+): Promise<void> {
+  await renderMediaMessage(ctx, buildDeviceCaption(days), {
+    subscriptionUrl,
+    keyboard: deviceMenuKeyboard(days),
   });
 }
 
@@ -223,7 +316,7 @@ async function renderConfig(ctx: Context): Promise<void> {
     return;
   }
 
-  await renderMediaMessage(ctx, await buildSubscriptionCaption(profile.subscriptionUrl), {
+  await renderMediaMessage(ctx, await buildSubscriptionCaption(profile.subscriptionUrl, profile.endsAt), {
     subscriptionUrl: profile.subscriptionUrl,
     keyboard: postActionKeyboard(),
   });
@@ -231,16 +324,24 @@ async function renderConfig(ctx: Context): Promise<void> {
 
 
 
-async function processBuyByDays(ctx: Context, days: number): Promise<void> {
+async function processBuyByPlan(
+  ctx: Context,
+  days: (typeof DAY_PLANS)[number],
+  devices: (typeof DEVICE_PLANS)[number],
+): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
+  const priceRub = resolvePlanPrice(days, devices);
   const result = await backend.confirmPayment({
     userId,
     days,
+    deviceLimit: devices,
+    amountCents: priceRub * 100,
   });
 
-  const subscriptionCaption = await buildSubscriptionCaption(result.subscriptionUrl);
+  const subscriptionCaption = await buildSubscriptionCaption(result.subscriptionUrl, result.endsAt);
   const caption = [
-    `Подписка активирована на ${days} дней.`,
+    `Подписка активирована на ${days} дней (${devices} устройств).`,
+    `Стоимость: ${priceRub} ₽`,
     `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
     '',
     subscriptionCaption,
@@ -295,7 +396,7 @@ bot.start(async (ctx) => {
   await safeHandleCallback(ctx, async () => {
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.subscriptionUrl);
+    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
   });
 });
 
@@ -313,7 +414,7 @@ bot.on('callback_query', async (ctx) => {
     if (data === 'MENU_MAIN') {
       const userId = await registerAndGetUserId(ctx);
       const profile = await backend.getProfile(userId);
-      await renderMainMenu(ctx, profile.subscriptionUrl);
+      await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
       return;
     }
 
@@ -326,7 +427,12 @@ bot.on('callback_query', async (ctx) => {
 
     if (data === 'TRIAL') {
       const userId = await registerAndGetUserId(ctx);
-      const result = await backend.confirmPayment({ userId, days: 90 });
+      const result = await backend.confirmPayment({
+        userId,
+        days: 2,
+        deviceLimit: 5,
+        amountCents: 0,
+      });
       await renderGotDemoSubscriptionMenu(ctx, new Date(result.endsAt), result.subscriptionUrl);
       return;
     }
@@ -342,13 +448,38 @@ bot.on('callback_query', async (ctx) => {
         throw new Error('Выбран неправильный план');
       }
 
-      await processBuyByDays(ctx, days);
+      const userId = await registerAndGetUserId(ctx);
+      const profile = await backend.getProfile(userId);
+      await renderDeviceMenu(ctx, days as (typeof DAY_PLANS)[number], profile.subscriptionUrl);
+      return;
+    }
+
+    if (data.startsWith('BUY_DEVICES_')) {
+      const match = data.match(/^BUY_DEVICES_(\d+)_(\d+)$/);
+      if (!match) {
+        throw new Error('Выбран неправильный план устройств');
+      }
+
+      const days = Number(match[1]);
+      const devices = Number(match[2]);
+      if (!DAY_PLANS.includes(days as (typeof DAY_PLANS)[number])) {
+        throw new Error('Выбран неправильный период');
+      }
+      if (!DEVICE_PLANS.includes(devices as (typeof DEVICE_PLANS)[number])) {
+        throw new Error('Выбрано неправильное количество устройств');
+      }
+
+      await processBuyByPlan(
+        ctx,
+        days as (typeof DAY_PLANS)[number],
+        devices as (typeof DEVICE_PLANS)[number],
+      );
       return;
     }
 
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.subscriptionUrl);
+    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
   });
 });
 

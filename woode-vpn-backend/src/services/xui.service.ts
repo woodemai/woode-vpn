@@ -35,6 +35,7 @@ interface XuiClientInput {
   expiryTime?: number;
   totalGB?: number;
   enable?: boolean;
+  limitIp?: number;
 }
 
 @Injectable()
@@ -114,7 +115,7 @@ export class XuiService {
             id: client.id,
             flow: 'xtls-rprx-vision',
             email: client.email,
-            limitIp: 0,
+            limitIp: client.limitIp ?? 0,
             totalGB: client.totalGB ?? 0,
             expiryTime: client.expiryTime ?? 0,
             enable: client.enable ?? true,

@@ -32,6 +32,13 @@ interface InboundSettingsPayload {
   clients?: InboundSettingsClient[];
 }
 
+const PLAN_PRICE_CENTS: Record<number, Record<number, number>> = {
+  30: { 5: 10000, 10: 15000, 15: 20000 },
+  90: { 5: 27000, 10: 40000, 15: 54000 },
+  180: { 5: 51000, 10: 76000, 15: 100000 },
+  365: { 5: 100000, 10: 145000, 15: 200000 },
+};
+
 function createShortUniqueLabel(value: string): string {
   const slug = slugify(value, {
     lowercase: true,
@@ -96,6 +103,8 @@ export class VpnService {
       throw new BadRequestException('No active subscription');
     }
 
+    const deviceLimit = this.resolveDeviceLimitFromSubscription(activeSubscription);
+
     const servers = this.xuiService.getServers();
     if (!servers.length) {
       throw new BadRequestException('No x-ui servers configured');
@@ -133,6 +142,7 @@ export class VpnService {
           email,
           subId: token,
           enable: true,
+          limitIp: deviceLimit,
         });
 
         const host = server.publicHost ?? new URL(server.baseUrl).hostname;
@@ -206,12 +216,12 @@ export class VpnService {
     };
   }
 
-  async getSubscriptionByToken(token: string): Promise<string> {
-    const payload = await this.getSubscriptionPayloadByToken(token);
+  async getSubscriptionByToken(token: string, hwid?: string): Promise<string> {
+    const payload = await this.getSubscriptionPayloadByToken(token, hwid);
     return payload.subscriptionText;
   }
 
-  async getSubscriptionPayloadByToken(token: string): Promise<{
+  async getSubscriptionPayloadByToken(token: string, hwid?: string): Promise<{
     subscriptionText: string;
     plainSubscriptionText: string;
     userInfo: string;
@@ -245,12 +255,33 @@ export class VpnService {
       throw new BadRequestException('Subscription expired');
     }
 
+    const deviceLimit = this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const normalizedHwid = this.normalizeHwid(hwid);
+
+    if (!normalizedHwid) {
+      return this.buildDeviceLimitExceededPayload(
+        activeSubscription.endsAt,
+        'Включить передачу HWID',
+      );
+    }
+
+    const isLimitExceeded = await this.bindDeviceOrCheckLimit(
+      profile.id,
+      normalizedHwid,
+      deviceLimit,
+    );
+
+    if (isLimitExceeded) {
+      return this.buildDeviceLimitExceededPayload(activeSubscription.endsAt);
+    }
+
     const currentMappings = this.parseClientMappings(profile.clientMappings);
     const syncResult = await this.syncProfileInbounds({
       token,
       userId: profile.userId,
       user: profile.user,
       currentMappings,
+      deviceLimit,
     });
 
     const subscriptions = Array.isArray(profile.configs)
@@ -465,6 +496,7 @@ export class VpnService {
     userId: number;
     user: { telegramName: string | null; externalId: string | null };
     currentMappings: ClientMapping[];
+    deviceLimit: number;
   }): Promise<{ mappings: ClientMapping[]; changed: boolean }> {
     const servers = this.xuiService.getServers();
     if (!servers.length) {
@@ -518,6 +550,7 @@ export class VpnService {
             email,
             subId: input.token,
             enable: true,
+            limitIp: input.deviceLimit,
           });
         }
 
@@ -633,6 +666,7 @@ export class VpnService {
   async getUserProfile(userId: number): Promise<{
     hasActiveSubscription: boolean;
     subscriptionUrl?: string;
+    endsAt?: string;
   }> {
     const profile = await this.prisma.vpnProfile.findUnique({
       where: { userId },
@@ -655,6 +689,166 @@ export class VpnService {
     return {
       hasActiveSubscription: true,
       subscriptionUrl: this.buildSubscriptionUrl(profile.subscriptionToken),
+      endsAt: activeSubscription.endsAt.toISOString(),
+    };
+  }
+
+  private resolveDeviceLimitFromSubscription(subscription: {
+    startsAt: Date;
+    endsAt: Date;
+    amountCents: number | null;
+  }): number {
+    const amountCents = subscription.amountCents;
+    if (typeof amountCents !== 'number' || amountCents <= 0) {
+      return 5;
+    }
+
+    const days = this.resolvePlanDays(subscription.startsAt, subscription.endsAt);
+    const dayPrices = PLAN_PRICE_CENTS[days];
+    if (!dayPrices) {
+      return 5;
+    }
+
+    const matched = Object.entries(dayPrices).find(([, price]) => price === amountCents);
+    if (!matched) {
+      return 5;
+    }
+
+    return Number(matched[0]) || 5;
+  }
+
+  private resolvePlanDays(startsAt: Date, endsAt: Date): number {
+    const diffMs = Math.max(0, endsAt.getTime() - startsAt.getTime());
+    return Math.round(diffMs / 86_400_000);
+  }
+
+  private normalizeHwid(hwid?: string): string | undefined {
+    if (!hwid) {
+      return undefined;
+    }
+
+    const normalized = hwid.trim().slice(0, 128);
+    if (!normalized) {
+      return undefined;
+    }
+
+    return normalized;
+  }
+
+  private async bindDeviceOrCheckLimit(
+    profileId: number,
+    hwid: string | undefined,
+    deviceLimit: number,
+  ): Promise<boolean> {
+    if (!hwid) {
+      return false;
+    }
+
+    await this.prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS vpn_hwid_bindings (
+        id SERIAL PRIMARY KEY,
+        profile_id INTEGER NOT NULL REFERENCES "VpnProfile"(id) ON DELETE CASCADE,
+        hwid VARCHAR(128) NOT NULL,
+        first_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        last_seen_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        UNIQUE(profile_id, hwid)
+      );
+    `);
+
+    type ExistingRow = { id: number };
+    const existing = await this.prisma.$queryRawUnsafe<ExistingRow[]>(
+      `SELECT id FROM vpn_hwid_bindings WHERE profile_id = $1 AND hwid = $2 LIMIT 1`,
+      profileId,
+      hwid,
+    );
+
+    if (existing.length) {
+      await this.prisma.$executeRawUnsafe(
+        `UPDATE vpn_hwid_bindings SET last_seen_at = NOW() WHERE profile_id = $1 AND hwid = $2`,
+        profileId,
+        hwid,
+      );
+      return false;
+    }
+
+    type CountRow = { count: string };
+    const countRows = await this.prisma.$queryRawUnsafe<CountRow[]>(
+      `SELECT COUNT(*)::text AS count FROM vpn_hwid_bindings WHERE profile_id = $1`,
+      profileId,
+    );
+    const currentCount = Number(countRows[0]?.count ?? 0);
+    if (currentCount >= deviceLimit) {
+      return true;
+    }
+
+    await this.prisma.$executeRawUnsafe(
+      `INSERT INTO vpn_hwid_bindings (profile_id, hwid) VALUES ($1, $2)`,
+      profileId,
+      hwid,
+    );
+
+    return false;
+  }
+
+  private buildDeviceLimitExceededPayload(
+    expiresAt: Date,
+    remark = 'Превышен лимит устройств',
+  ): {
+    subscriptionText: string;
+    plainSubscriptionText: string;
+    userInfo: string;
+    profileTitleBase64: string;
+    profileUpdateIntervalHours: number;
+    supportUrl: string;
+    profileUrl: string;
+    announce: string;
+  } {
+    const title = this.configService.get<string>('app.subscription.title') ?? 'Woode VPN';
+    const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
+    const profileUpdateIntervalHours = Math.max(
+      1,
+      Number(
+        this.configService.get<number>('app.subscription.updateIntervalHours') ??
+        12,
+      ),
+    );
+
+    const supportUrl =
+      this.configService.get<string>('app.subscription.supportUrl') ?? '';
+    const profileUrl =
+      this.configService.get<string>('app.subscription.profileUrl') ?? '';
+    const announce = this.configService.get<string>('app.subscription.announce') ?? '';
+    const totalBytes = Math.max(
+      0,
+      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+    );
+    const expireTs = Math.floor(expiresAt.getTime() / 1000);
+    const userInfo = `upload=0; download=0; total=${totalBytes}; expire=${expireTs}`;
+    const fakeConfig =
+      `vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443?encryption=none&type=tcp&security=tls#${encodeURIComponent(remark)}`;
+
+    const metaLines = [
+      `#profile-title: ${title}`,
+      `#profile-update-interval: ${profileUpdateIntervalHours}`,
+      `#subscription-userinfo: ${userInfo}`,
+      ...(supportUrl ? [`#support-url: ${supportUrl}`] : []),
+      ...(profileUrl ? [`#profile-web-page-url: ${profileUrl}`] : []),
+      ...(announce ? [`#announce: ${announce}`] : []),
+    ];
+
+    const plainSubscriptionText = `${metaLines.join('\n')}\n${fakeConfig}`;
+    const subscriptionText =
+      this.subscriptionService.encodeBase64Subscription(plainSubscriptionText);
+
+    return {
+      subscriptionText,
+      plainSubscriptionText,
+      userInfo,
+      profileTitleBase64,
+      profileUpdateIntervalHours,
+      supportUrl,
+      profileUrl,
+      announce,
     };
   }
 
