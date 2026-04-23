@@ -93,6 +93,11 @@ function postActionKeyboard(subscriptionUrl?: string) {
     rows.push([Markup.button.callback('🔲 QR Код', 'ACTION_QR')]);
   }
 
+  rows.push([
+    Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
+    Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
+  ]);
+
   rows.push([Markup.button.callback('🔙 Назад к меню', 'MENU_MAIN')]);
 
   return Markup.inlineKeyboard(rows);
@@ -106,6 +111,10 @@ function mainMenuKeyboard(hasSubscription: boolean) {
   return Markup.inlineKeyboard([
     [subscriptionButton],
     [Markup.button.callback('⚙️ Моя подписка', 'ACTION_CONFIG')],
+    [
+      Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
+      Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
+    ],
   ]);
 }
 
