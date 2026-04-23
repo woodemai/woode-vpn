@@ -52,7 +52,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
-  ) {}
+  ) { }
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
     const startedAt = Date.now();
@@ -72,12 +72,12 @@ export class PaymentsService {
     // In dev mode, skip payment verification and emulate a successful payment.
     const payment: YooKassaPayment = isDev
       ? {
-          id: rawPaymentId,
-          status: 'succeeded',
-          paid: true,
-          amount: { value: '100' },
-          metadata: webhookMetadata,
-        }
+        id: rawPaymentId,
+        status: 'succeeded',
+        paid: true,
+        amount: { value: '100' },
+        metadata: webhookMetadata,
+      }
       : await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};

@@ -8,7 +8,7 @@ export class PublicSubscriptionController {
   constructor(
     private readonly vpnService: VpnService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Get('sub/:token')
   async getSubscription(
