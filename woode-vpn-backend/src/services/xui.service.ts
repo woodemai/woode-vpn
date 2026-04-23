@@ -68,7 +68,6 @@ export class XuiService {
 
   async getInbounds(server: XuiServerConfig): Promise<XuiInbound[]> {
     const list = await this.requestWithFallback<XuiInbound[]>(server, 'GET', [
-      'inbounds/list',
       'panel/api/inbounds/list',
     ]);
 
@@ -130,7 +129,6 @@ export class XuiService {
 
     try {
       await this.requestWithFallback<unknown>(server, 'POST', [
-        'inbounds/addClient',
         'panel/api/inbounds/addClient',
       ], payload.toString(), {
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',

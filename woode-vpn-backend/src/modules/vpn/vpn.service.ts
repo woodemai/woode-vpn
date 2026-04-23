@@ -13,11 +13,23 @@ import { SubscriptionService } from '../../services/subscription.service';
 import { XuiService } from '../../services/xui.service';
 import { slugify } from 'transliteration';
 
+type XuiInboundItem = Awaited<ReturnType<XuiService['getInbounds']>>[number];
+
 interface ClientMapping {
   serverId: string;
   country: string;
   inboundId: number;
   uuid: string;
+}
+
+interface InboundSettingsClient {
+  id?: string;
+  email?: string;
+  subId?: string;
+}
+
+interface InboundSettingsPayload {
+  clients?: InboundSettingsClient[];
 }
 
 function createShortUniqueLabel(value: string): string {
@@ -233,6 +245,14 @@ export class VpnService {
       throw new BadRequestException('Subscription expired');
     }
 
+    const currentMappings = this.parseClientMappings(profile.clientMappings);
+    const syncResult = await this.syncProfileInbounds({
+      token,
+      userId: profile.userId,
+      user: profile.user,
+      currentMappings,
+    });
+
     const subscriptions = Array.isArray(profile.configs)
       ? (profile.configs as string[])
       : [];
@@ -241,18 +261,56 @@ export class VpnService {
       this.configService.get<boolean>('app.subscription.refreshFromXui') ?? true;
 
     let effectiveSubscriptions = subscriptions;
+    const profileUpdateData: Prisma.VpnProfileUpdateInput = {};
+
+    if (syncResult.changed) {
+      profileUpdateData.clientMappings =
+        syncResult.mappings as unknown as Prisma.InputJsonValue;
+    }
+
     if (refreshFromXui) {
       const liveSubscriptions = await this.fetchLiveSubscriptions(token);
 
       if (liveSubscriptions.length) {
         effectiveSubscriptions = liveSubscriptions;
-        await this.prisma.vpnProfile.update({
-          where: { id: profile.id },
-          data: {
-            configs: liveSubscriptions as unknown as Prisma.InputJsonValue,
-          },
-        });
+        profileUpdateData.configs =
+          liveSubscriptions as unknown as Prisma.InputJsonValue;
       }
+    }
+
+    if ((syncResult.changed || !effectiveSubscriptions.length) && !refreshFromXui) {
+      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
+        syncResult.mappings,
+      );
+
+      if (rebuiltSubscriptions.length) {
+        effectiveSubscriptions = rebuiltSubscriptions;
+        profileUpdateData.configs =
+          rebuiltSubscriptions as unknown as Prisma.InputJsonValue;
+      }
+    }
+
+    if (
+      refreshFromXui &&
+      syncResult.changed &&
+      !profileUpdateData.configs
+    ) {
+      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
+        syncResult.mappings,
+      );
+
+      if (rebuiltSubscriptions.length) {
+        effectiveSubscriptions = rebuiltSubscriptions;
+        profileUpdateData.configs =
+          rebuiltSubscriptions as unknown as Prisma.InputJsonValue;
+      }
+    }
+
+    if (Object.keys(profileUpdateData).length) {
+      await this.prisma.vpnProfile.update({
+        where: { id: profile.id },
+        data: profileUpdateData,
+      });
     }
 
     const mergedPlainText = this.subscriptionService.mergePlainSubscriptions(
@@ -344,6 +402,201 @@ export class VpnService {
     }
 
     return liveSubscriptions;
+  }
+
+  private parseClientMappings(raw: Prisma.JsonValue | null): ClientMapping[] {
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+
+    const mappings: ClientMapping[] = [];
+
+    for (const item of raw) {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        continue;
+      }
+
+      const record = item as Record<string, unknown>;
+      if (
+        typeof record.serverId !== 'string' ||
+        typeof record.country !== 'string' ||
+        typeof record.inboundId !== 'number' ||
+        typeof record.uuid !== 'string'
+      ) {
+        continue;
+      }
+
+      mappings.push({
+        serverId: record.serverId,
+        country: record.country,
+        inboundId: record.inboundId,
+        uuid: record.uuid,
+      });
+    }
+
+    return mappings;
+  }
+
+  private resolveXuiEmailPrefix(
+    user: { telegramName: string | null; externalId: string | null },
+    userId: number,
+  ): string {
+    const telegramNameSource =
+      user.telegramName ?? user.externalId ?? `user-${userId}`;
+
+    return createShortUniqueLabel(telegramNameSource);
+  }
+
+  private parseInboundClients(raw?: string): InboundSettingsClient[] {
+    if (!raw) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as InboundSettingsPayload;
+      return Array.isArray(parsed.clients) ? parsed.clients : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async syncProfileInbounds(input: {
+    token: string;
+    userId: number;
+    user: { telegramName: string | null; externalId: string | null };
+    currentMappings: ClientMapping[];
+  }): Promise<{ mappings: ClientMapping[]; changed: boolean }> {
+    const servers = this.xuiService.getServers();
+    if (!servers.length) {
+      return { mappings: input.currentMappings, changed: false };
+    }
+
+    const mappingMap = new Map<string, ClientMapping>();
+    for (const mapping of input.currentMappings) {
+      mappingMap.set(`${mapping.serverId}:${mapping.inboundId}`, mapping);
+    }
+
+    const emailPrefix = this.resolveXuiEmailPrefix(input.user, input.userId);
+    let changed = false;
+
+    for (const server of servers) {
+      let inbounds: XuiInboundItem[];
+      try {
+        inbounds = await this.xuiService.getInbounds(server);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        this.logger.warn(
+          `sync inbounds skipped: userId=${input.userId}, server=${server.id}, error=${message}`,
+        );
+        continue;
+      }
+
+      const allowedInboundIds = server.inboundIds ?? [];
+      const selectedInbounds = inbounds
+        .filter((item) => allowedInboundIds.length === 0 || allowedInboundIds.includes(item.id))
+        .filter((item) => item.protocol === 'vless');
+
+      for (const inbound of selectedInbounds) {
+        const mappingKey = `${server.id}:${inbound.id}`;
+        if (mappingMap.has(mappingKey)) {
+          continue;
+        }
+
+        const email = `${emailPrefix}-${server.id}-${inbound.id}`;
+        const existingClient = this.parseInboundClients(inbound.settings).find(
+          (client) => client.subId === input.token || client.email === email,
+        );
+
+        const uuid =
+          typeof existingClient?.id === 'string' && existingClient.id
+            ? existingClient.id
+            : randomUUID();
+
+        if (!existingClient) {
+          await this.xuiService.addClient(server, inbound.id, {
+            id: uuid,
+            email,
+            subId: input.token,
+            enable: true,
+          });
+        }
+
+        mappingMap.set(mappingKey, {
+          serverId: server.id,
+          country: server.country,
+          inboundId: inbound.id,
+          uuid,
+        });
+        changed = true;
+      }
+    }
+
+    return {
+      mappings: Array.from(mappingMap.values()),
+      changed,
+    };
+  }
+
+  private async buildSubscriptionsFromMappings(
+    mappings: ClientMapping[],
+  ): Promise<string[]> {
+    if (!mappings.length) {
+      return [];
+    }
+
+    const servers = this.xuiService.getServers();
+    const serverById = new Map(servers.map((server) => [server.id, server]));
+    const grouped = new Map<string, ClientMapping[]>();
+
+    for (const mapping of mappings) {
+      const list = grouped.get(mapping.serverId) ?? [];
+      list.push(mapping);
+      grouped.set(mapping.serverId, list);
+    }
+
+    const subscriptions: string[] = [];
+
+    for (const [serverId, serverMappings] of grouped.entries()) {
+      const server = serverById.get(serverId);
+      if (!server) {
+        continue;
+      }
+
+      let inbounds: XuiInboundItem[];
+      try {
+        inbounds = await this.xuiService.getInbounds(server);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        this.logger.warn(
+          `build subscription skipped: server=${server.id}, error=${message}`,
+        );
+        continue;
+      }
+
+      const inboundById = new Map<number, XuiInboundItem>(
+        inbounds.map((inbound) => [inbound.id, inbound]),
+      );
+
+      for (const mapping of serverMappings) {
+        const inbound = inboundById.get(mapping.inboundId);
+        if (!inbound) {
+          continue;
+        }
+
+        const host = server.publicHost ?? new URL(server.baseUrl).hostname;
+        const config = this.subscriptionService.buildConfig({
+          uuid: mapping.uuid,
+          host,
+          port: inbound.port,
+          inboundRemark: inbound.remark ?? `inbound-${inbound.id}`,
+          country: server.country,
+          streamSettingsRaw: inbound.streamSettings,
+        });
+        subscriptions.push(config);
+      }
+    }
+
+    return subscriptions;
   }
 
   private async fetchUsageTotals(
