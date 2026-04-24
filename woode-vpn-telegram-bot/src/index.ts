@@ -189,6 +189,7 @@ async function renderMediaMessage(
 function postActionKeyboard() {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
+  rows.push([Markup.button.callback('🔄 Продлить подписку', 'MENU_BUY')]);
   rows.push([
     Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
     Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
