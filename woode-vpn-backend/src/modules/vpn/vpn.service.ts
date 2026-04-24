@@ -112,6 +112,11 @@ export class VpnService {
 
     const deviceLimit = this.resolveDeviceLimitFromSubscription(activeSubscription);
 
+    const existingProfile = await this.prisma.vpnProfile.findUnique({
+      where: { userId },
+    });
+    const existingMappings = this.parseClientMappings(existingProfile?.clientMappings ?? null);
+
     const servers = this.xuiService.getServers();
     if (!servers.length) {
       throw new BadRequestException('No x-ui servers configured');
@@ -119,7 +124,7 @@ export class VpnService {
 
     this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
 
-    const token = generateSubscriptionToken();
+    const token = existingProfile?.subscriptionToken ?? generateSubscriptionToken();
     const subscriptions: string[] = [];
     const mappings: ClientMapping[] = [];
 
@@ -141,16 +146,22 @@ export class VpnService {
       }
 
       for (const inbound of selectedInbounds) {
-        const uuid = randomUUID();
+        const existingMapping = existingMappings.find(
+          (mapping) =>
+            mapping.serverId === server.id && mapping.inboundId === inbound.id,
+        );
+        const uuid = existingMapping?.uuid ?? randomUUID();
         const email = `${xuiEmailPrefix}-${server.id}-${inbound.id}`;
 
-        await this.xuiService.addClient(server, inbound.id, {
-          id: uuid,
-          email,
-          subId: token,
-          enable: true,
-          limitIp: deviceLimit,
-        });
+        if (!existingMapping) {
+          await this.xuiService.addClient(server, inbound.id, {
+            id: uuid,
+            email,
+            subId: token,
+            enable: true,
+            limitIp: deviceLimit,
+          });
+        }
 
         const host = server.publicHost ?? new URL(server.baseUrl).hostname;
         const config = this.subscriptionService.buildConfig({

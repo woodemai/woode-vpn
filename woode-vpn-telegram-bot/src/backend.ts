@@ -14,6 +14,15 @@ export interface ConfirmPaymentResponse {
   alreadyProcessed: boolean;
 }
 
+export interface CreatePaymentResponse {
+  userId: number;
+  days: number;
+  deviceLimit: number;
+  amountCents: number;
+  paymentId: string;
+  paymentUrl: string;
+}
+
 export interface UserProfileResponse {
   hasActiveSubscription: boolean;
   subscriptionUrl?: string;
@@ -62,6 +71,19 @@ export class BackendClient {
     amountCents?: number;
   }): Promise<ConfirmPaymentResponse> {
     return this.request<ConfirmPaymentResponse>('/api/payments/confirm', {
+      method: 'POST',
+      body: input,
+    });
+  }
+
+  async createPayment(input: {
+    userId: number;
+    days: number;
+    deviceLimit: number;
+    amountCents: number;
+    returnUrl?: string;
+  }): Promise<CreatePaymentResponse> {
+    return this.request<CreatePaymentResponse>('/api/payments/create', {
       method: 'POST',
       body: input,
     });

@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Context, Input, Markup, Telegraf } from 'telegraf';
 import QRCode from 'qrcode';
-import { BackendClient, UserProfileResponse } from './backend.js';
+import { BackendClient, CreatePaymentResponse, UserProfileResponse } from './backend.js';
 
 
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -189,6 +189,7 @@ async function renderMediaMessage(
 function postActionKeyboard() {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
+  rows.push([Markup.button.callback('🔄 Продлить подписку', 'MENU_BUY')]);
   rows.push([
     Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
     Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
@@ -242,6 +243,19 @@ function buildBuyCaption(): string {
   ].join('\n');
 }
 
+function buildPaymentCaption(plan: CreatePaymentResponse): string {
+  const priceRub = (plan.amountCents / 100).toFixed(0);
+
+  return [
+    '<b>WoodeVPN ✨</b>',
+    '',
+    `Вы выбрали пополнение на ${priceRub} ₽`,
+    '',
+    `Период: ${plan.days} дней`,
+    `Устройств: ${plan.deviceLimit}`,
+  ].join('\n');
+}
+
 function buyMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('30 дней', 'BUY_DAYS_30')],
@@ -261,6 +275,13 @@ function deviceMenuKeyboard(days: (typeof DAY_PLANS)[number]) {
     [Markup.button.callback(`15 устройств - ${dayPrices[15]} ₽`, `BUY_DEVICES_${days}_15`)],
     [Markup.button.callback('Назад к периодам', 'MENU_BUY')],
     [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
+  ]);
+}
+
+function paymentKeyboard(days: (typeof DAY_PLANS)[number], paymentUrl: string) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url('💳 Пополнить', paymentUrl)],
+    [Markup.button.callback('⬅️ Назад', `BUY_DAYS_${days}`)],
   ]);
 }
 
@@ -386,30 +407,15 @@ async function processBuyByPlan(
 ): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
   const priceRub = resolvePlanPrice(days, devices);
-  const result = await backend.confirmPayment({
+  const result = await backend.createPayment({
     userId,
     days,
     deviceLimit: devices,
     amountCents: priceRub * 100,
   });
 
-  const profile = await backend.getProfile(userId);
-
-  const subscriptionCaption = await buildSubscriptionCaption(result.subscriptionUrl, {
-    ...profile,
-    endsAt: result.endsAt,
-  });
-  const caption = [
-    `Подписка активирована на ${days} дней (${devices} устройств).`,
-    `Стоимость: ${priceRub} ₽`,
-    `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
-    '',
-    subscriptionCaption,
-  ].join('\n');
-
-  await renderMediaMessage(ctx, caption, {
-    subscriptionUrl: result.subscriptionUrl,
-    keyboard: postActionKeyboard(),
+  await renderMediaMessage(ctx, buildPaymentCaption(result), {
+    keyboard: paymentKeyboard(days, result.paymentUrl),
   });
 }
 
