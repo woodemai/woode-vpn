@@ -18,6 +18,11 @@ export interface UserProfileResponse {
   hasActiveSubscription: boolean;
   subscriptionUrl?: string;
   endsAt?: string;
+  profileName?: string;
+  devicesConnected?: number;
+  devicesMax?: number;
+  trafficUsedBytes?: number;
+  trafficTotalBytes?: number | null;
 }
 
 interface BackendClientOptions {

@@ -691,9 +691,15 @@ export class VpnService {
     hasActiveSubscription: boolean;
     subscriptionUrl?: string;
     endsAt?: string;
+    profileName?: string;
+    devicesConnected?: number;
+    devicesMax?: number;
+    trafficUsedBytes?: number;
+    trafficTotalBytes?: number | null;
   }> {
     const profile = await this.prisma.vpnProfile.findUnique({
       where: { userId },
+      include: { user: true },
     });
 
     const activeSubscription = await this.prisma.subscription.findFirst({
@@ -704,16 +710,36 @@ export class VpnService {
           gt: new Date(),
         },
       },
+      orderBy: { endsAt: 'desc' },
     });
 
     if (!profile || !activeSubscription) {
       return { hasActiveSubscription: false };
     }
 
+    const devicesMax = this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const devicesConnected = await this.prisma.vpnHwidBinding.count({
+      where: { profileId: profile.id },
+    });
+
+    const usage = await this.fetchUsageTotals(profile.subscriptionToken);
+    const trafficUsedBytes = usage.upload + usage.download;
+    const configuredTotalBytes = Math.max(
+      0,
+      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+    );
+
+    const normalizedProfileName = profile.user.telegramName?.trim() || undefined;
+
     return {
       hasActiveSubscription: true,
       subscriptionUrl: this.buildSubscriptionUrl(profile.subscriptionToken),
       endsAt: activeSubscription.endsAt.toISOString(),
+      profileName: normalizedProfileName,
+      devicesConnected,
+      devicesMax,
+      trafficUsedBytes,
+      trafficTotalBytes: configuredTotalBytes > 0 ? configuredTotalBytes : null,
     };
   }
 
