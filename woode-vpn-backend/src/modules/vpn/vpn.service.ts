@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../../db/prisma.service';
 import { SubscriptionService } from '../../services/subscription.service';
+import { TelegramNotifierService } from '../../services/telegram-notifier.service';
 import { XuiService } from '../../services/xui.service';
 import { slugify } from 'transliteration';
 
@@ -31,6 +32,11 @@ interface InboundSettingsClient {
 interface InboundSettingsPayload {
   clients?: InboundSettingsClient[];
 }
+
+type DeviceBindResult =
+  | { status: 'existing' }
+  | { status: 'created'; currentCount: number }
+  | { status: 'limit_exceeded'; currentCount: number };
 
 const PLAN_PRICE_CENTS: Record<number, Record<number, number>> = {
   30: { 5: 10000, 10: 15000, 15: 20000 },
@@ -64,6 +70,7 @@ export class VpnService {
     private readonly prisma: PrismaService,
     private readonly xuiService: XuiService,
     private readonly subscriptionService: SubscriptionService,
+    private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
   ) { }
 
@@ -265,13 +272,30 @@ export class VpnService {
       );
     }
 
-    const isLimitExceeded = await this.bindDeviceOrCheckLimit(
+    const bindResult = await this.bindDeviceOrCheckLimit(
       profile.id,
       normalizedHwid,
       deviceLimit,
     );
 
-    if (isLimitExceeded) {
+    if (bindResult.status === 'created') {
+      await this.notifyNewDeviceBound({
+        userId: profile.userId,
+        externalId: profile.user.externalId,
+        hwid: normalizedHwid,
+        currentCount: bindResult.currentCount,
+        deviceLimit,
+      });
+    }
+
+    if (bindResult.status === 'limit_exceeded') {
+      await this.notifyDeviceLimitExceeded({
+        userId: profile.userId,
+        externalId: profile.user.externalId,
+        hwid: normalizedHwid,
+        currentCount: bindResult.currentCount,
+        deviceLimit,
+      });
       return this.buildDeviceLimitExceededPayload(activeSubscription.endsAt);
     }
 
@@ -739,9 +763,9 @@ export class VpnService {
     profileId: number,
     hwid: string | undefined,
     deviceLimit: number,
-  ): Promise<boolean> {
+  ): Promise<DeviceBindResult> {
     if (!hwid) {
-      return false;
+      return { status: 'existing' };
     }
 
     const existing = await this.prisma.vpnHwidBinding.findFirst({
@@ -757,7 +781,7 @@ export class VpnService {
         where: { id: existing.id },
         data: { lastSeenAt: new Date() },
       });
-      return false;
+      return { status: 'existing' };
     }
 
     const currentCount = await this.prisma.vpnHwidBinding.count({
@@ -765,7 +789,7 @@ export class VpnService {
     });
 
     if (currentCount >= deviceLimit) {
-      return true;
+      return { status: 'limit_exceeded', currentCount };
     }
 
     await this.prisma.vpnHwidBinding.create({
@@ -775,7 +799,73 @@ export class VpnService {
       },
     });
 
-    return false;
+    return { status: 'created', currentCount: currentCount + 1 };
+  }
+
+  private async notifyNewDeviceBound(input: {
+    userId: number;
+    externalId: string | null;
+    hwid: string;
+    currentCount: number;
+    deviceLimit: number;
+  }): Promise<void> {
+    const chatId = this.resolveTelegramChatId(input.externalId);
+    if (!chatId) {
+      return;
+    }
+
+    const message = [
+      '📲 <b>Новое устройство подключено</b>',
+      `• <b>HWID:</b> <code>${this.escapeHtml(input.hwid)}</code>`,
+      `• <b>Устройства:</b> ${input.currentCount}/${input.deviceLimit}`,
+      `• <b>User ID:</b> ${input.userId}`,
+    ].join('\n');
+
+    await this.telegramNotifierService.sendToChat(chatId, message, { parseMode: 'HTML' });
+  }
+
+  private async notifyDeviceLimitExceeded(input: {
+    userId: number;
+    externalId: string | null;
+    hwid: string;
+    currentCount: number;
+    deviceLimit: number;
+  }): Promise<void> {
+    const chatId = this.resolveTelegramChatId(input.externalId);
+    if (!chatId) {
+      return;
+    }
+
+    const message = [
+      '🚫 <b>Попытка подключения сверх лимита</b>',
+      `• <b>HWID:</b> <code>${this.escapeHtml(input.hwid)}</code>`,
+      `• <b>Устройства:</b> ${input.currentCount}/${input.deviceLimit}`,
+      `• <b>User ID:</b> ${input.userId}`,
+    ].join('\n');
+
+    await this.telegramNotifierService.sendToChat(chatId, message, { parseMode: 'HTML' });
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  private resolveTelegramChatId(externalId: string | null): string | undefined {
+    if (!externalId) {
+      return undefined;
+    }
+
+    const trimmed = externalId.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+
+    return trimmed;
   }
 
   private buildDeviceLimitExceededPayload(
