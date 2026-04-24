@@ -10,6 +10,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../../db/prisma.service';
 import { VpnService } from '../vpn/vpn.service';
 import { TelegramNotifierService } from '../../services/telegram-notifier.service';
+import { SubscriptionNotifierService } from '../../services/subscription-notifier.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { YooKassaWebhookDto } from './dto/yookassa-webhook.dto';
@@ -64,6 +65,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
     private readonly telegramNotifierService: TelegramNotifierService,
+    private readonly subscriptionNotifierService: SubscriptionNotifierService,
   ) { }
 
   async createYooKassaPayment(dto: CreatePaymentDto) {
@@ -276,7 +278,7 @@ export class PaymentsService {
       throw new BadRequestException('Invalid subscription dates');
     }
 
-    await this.prisma.subscription.create({
+    const newSubscription = await this.prisma.subscription.create({
       data: {
         userId: user.id,
         status: SubscriptionStatus.ACTIVE,
@@ -286,6 +288,9 @@ export class PaymentsService {
         amountCents,
       },
     });
+
+    // Reset notification flags for the new subscription
+    await this.subscriptionNotifierService.resetNotificationFlags(newSubscription.id);
 
     const profileSnapshot = dto.paymentId
       ? await this.vpnService.getUserProfile(user.id).catch(() => undefined)
