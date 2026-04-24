@@ -6,8 +6,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../db/prisma.service';
 import { VpnService } from '../vpn/vpn.service';
+import { TelegramNotifierService } from '../../services/telegram-notifier.service';
+import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { YooKassaWebhookDto } from './dto/yookassa-webhook.dto';
 
@@ -20,6 +23,14 @@ interface YooKassaPayment {
     currency?: string;
   };
   metadata?: Record<string, string>;
+}
+
+interface YooKassaCreatedPayment {
+  id: string;
+  confirmation?: {
+    type?: string;
+    confirmation_url?: string;
+  };
 }
 
 const PLAN_PRICE_CENTS: Record<number, Record<number, number>> = {
@@ -52,7 +63,77 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
+    private readonly telegramNotifierService: TelegramNotifierService,
   ) { }
+
+  async createYooKassaPayment(dto: CreatePaymentDto) {
+    const startedAt = Date.now();
+    this.logger.log(
+      `createYooKassaPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}`,
+    );
+
+    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const days = dto.days ?? (dto.months ? dto.months * 30 : 30);
+    const deviceLimit = dto.deviceLimit ?? 5;
+    const expectedAmountCents = this.resolvePlanPrice(days, deviceLimit);
+
+    if (
+      typeof expectedAmountCents === 'number' &&
+      typeof dto.amountCents === 'number' &&
+      dto.amountCents !== expectedAmountCents
+    ) {
+      throw new BadRequestException(
+        `Invalid amount for selected plan: expected ${expectedAmountCents}, got ${dto.amountCents}`,
+      );
+    }
+
+    const amountCents =
+      typeof expectedAmountCents === 'number'
+        ? expectedAmountCents
+        : dto.amountCents;
+
+    if (typeof amountCents !== 'number') {
+      throw new BadRequestException('Amount is required for the selected plan');
+    }
+
+    const payment = process.env.IS_DEV === 'true'
+      ? {
+        id: `dev-${randomUUID()}`,
+        confirmation: {
+          type: 'redirect',
+          confirmation_url: this.buildDevPaymentUrl(dto.userId, days, deviceLimit, amountCents),
+        },
+      }
+      : await this.createYooKassaPaymentIntent({
+        userId: user.id,
+        days,
+        deviceLimit,
+        amountCents,
+        returnUrl: dto.returnUrl,
+      });
+
+    const confirmationUrl = payment.confirmation?.confirmation_url;
+    if (!confirmationUrl) {
+      throw new InternalServerErrorException('YooKassa confirmation URL is missing');
+    }
+
+    this.logger.log(
+      `createYooKassaPayment finished: userId=${user.id}, paymentId=${payment.id}, durationMs=${Date.now() - startedAt}`,
+    );
+
+    return {
+      userId: user.id,
+      days,
+      deviceLimit,
+      amountCents,
+      paymentId: payment.id,
+      paymentUrl: confirmationUrl,
+    };
+  }
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
     const startedAt = Date.now();
@@ -206,7 +287,38 @@ export class PaymentsService {
       },
     });
 
-    const vpnProvisioning = await this.vpnService.provisionForUser(user.id);
+    const profileSnapshot = dto.paymentId
+      ? await this.vpnService.getUserProfile(user.id).catch(() => undefined)
+      : undefined;
+
+    let vpnProvisioning: { subscriptionUrl: string; subscriptionText: string } | undefined;
+    try {
+      vpnProvisioning = await this.vpnService.provisionForUser(user.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown error';
+      this.logger.warn(`confirmPayment provisioning failed for userId=${user.id}: ${message}`);
+    }
+
+    if (dto.paymentId && user.externalId) {
+      const chatId = user.externalId;
+      const subscriptionUrl =
+        vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '';
+
+      const caption = this.buildSubscriptionNotificationCaption({
+        subscriptionUrl,
+        profileName: profileSnapshot?.profileName ?? user.telegramName ?? undefined,
+        endsAt,
+        devicesConnected: profileSnapshot?.devicesConnected,
+        devicesMax: profileSnapshot?.devicesMax,
+        trafficUsedBytes: profileSnapshot?.trafficUsedBytes,
+        trafficTotalBytes: profileSnapshot?.trafficTotalBytes,
+      });
+
+      await this.telegramNotifierService.sendPhotoToChat(chatId, './logo.jpg', caption, {
+        parseMode: 'HTML',
+        replyMarkup: this.buildSubscriptionReplyMarkup(),
+      });
+    }
 
     this.logger.log(
       `confirmPayment finished: userId=${user.id}, endsAt=${endsAt.toISOString()}, durationMs=${Date.now() - startedAt}`,
@@ -215,10 +327,190 @@ export class PaymentsService {
     return {
       userId: user.id,
       endsAt,
-      subscriptionUrl: vpnProvisioning.subscriptionUrl,
-      subscriptionText: vpnProvisioning.subscriptionText,
+      subscriptionUrl: vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '',
+      subscriptionText: vpnProvisioning?.subscriptionText,
       alreadyProcessed: false,
     };
+  }
+
+  private async createYooKassaPaymentIntent(input: {
+    userId: number;
+    days: number;
+    deviceLimit: number;
+    amountCents: number;
+    returnUrl?: string;
+  }): Promise<YooKassaCreatedPayment> {
+    const shopId = process.env.YOOKASSA_SHOP_ID;
+    const secretKey = process.env.YOOKASSA_SECRET_KEY;
+
+    if (!shopId || !secretKey) {
+      throw new InternalServerErrorException(
+        'YOOKASSA_SHOP_ID and YOOKASSA_SECRET_KEY must be set',
+      );
+    }
+
+    const token = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
+    const amountValue = (input.amountCents / 100).toFixed(2);
+    const response = await fetch('https://api.yookassa.ru/v3/payments', {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${token}`,
+        'Content-Type': 'application/json',
+        'Idempotence-Key': randomUUID(),
+      },
+      body: JSON.stringify({
+        amount: {
+          value: amountValue,
+          currency: 'RUB',
+        },
+        capture: true,
+        confirmation: {
+          type: 'redirect',
+          return_url:
+            input.returnUrl?.trim() || process.env.APP_PUBLIC_BASE_URL || 'https://t.me',
+        },
+        description: `WoodeVPN ${input.days} days / ${input.deviceLimit} devices`,
+        metadata: {
+          userId: String(input.userId),
+          days: String(input.days),
+          deviceLimit: String(input.deviceLimit),
+          amountCents: String(input.amountCents),
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new BadRequestException(
+        `YooKassa payment creation failed with status ${response.status}: ${text}`,
+      );
+    }
+
+    return (await response.json()) as YooKassaCreatedPayment;
+  }
+
+  private buildDevPaymentUrl(userId: number, days: number, deviceLimit: number, amountCents: number): string {
+    const params = new URLSearchParams({
+      userId: String(userId),
+      days: String(days),
+      deviceLimit: String(deviceLimit),
+      amountCents: String(amountCents),
+    });
+
+    return `${process.env.APP_PUBLIC_BASE_URL ?? 'https://example.com'}/payments/dev?${params.toString()}`;
+  }
+
+  private buildSubscriptionReplyMarkup(): Record<string, unknown> {
+    return {
+      inline_keyboard: [
+        [{ text: '🔄 Продлить подписку', callback_data: 'MENU_BUY' }],
+        [
+          { text: '📰 Новости', url: 'https://t.me/woodenews' },
+          { text: '🛟 Поддержка', url: 'https://t.me/woodemai' },
+        ],
+      ],
+    };
+  }
+
+  private buildSubscriptionNotificationCaption(input: {
+    subscriptionUrl?: string;
+    profileName?: string;
+    endsAt: Date;
+    devicesConnected?: number;
+    devicesMax?: number;
+    trafficUsedBytes?: number;
+    trafficTotalBytes?: number | null;
+  }): string {
+    const baseParts = [
+      '<b>WoodeVPN ✨</b>',
+      '',
+      `<blockquote>${[
+        `👤 <b>Профиль:</b> ${this.escapeHtml((input.profileName ?? 'не указано').trim())}`,
+        `📅 <b>Дата окончания:</b> ${this.formatMoscowDate(input.endsAt)}`,
+        `⏳ <b>Осталось времени:</b> ${this.formatRemainingTime(input.endsAt)}`,
+        `📱 <b>Устройства:</b> ${typeof input.devicesConnected === 'number' && typeof input.devicesMax === 'number'
+          ? `${input.devicesConnected}/${input.devicesMax}`
+          : '—'}`,
+        `📊 <b>Трафик:</b> ${this.formatTraffic(input.trafficUsedBytes, input.trafficTotalBytes)}`,
+      ].join('\n')}</blockquote>`,
+      '',
+      '✅ У вас активна подписка!',
+      '',
+    ];
+
+    if (!input.subscriptionUrl) {
+      return [...baseParts, '✅ У вас активна подписка, ссылка готовится.'].join('\n');
+    }
+
+    return [
+      ...baseParts,
+      '',
+      '<b>📲 Как подключить подписку в Happ</b>',
+      '',
+      '1️⃣ Откройте приложение Happ',
+      '2️⃣ Нажмите «Добавить подписку»',
+      '3️⃣ Выберите «Добавить по QR коду» (выше на экране)',
+      '',
+      '<b>🔗 Ссылка подписки:</b>',
+      `<code>${this.escapeHtml(input.subscriptionUrl)}</code>`,
+    ].join('\n');
+  }
+
+  private formatTraffic(usedBytes?: number, totalBytes?: number | null): string {
+    const used = typeof usedBytes === 'number' ? usedBytes : 0;
+    if (typeof totalBytes === 'number' && totalBytes > 0) {
+      return `${this.formatBytes(used)}/${this.formatBytes(totalBytes)}`;
+    }
+
+    return `${this.formatBytes(used)}/∞`;
+  }
+
+  private formatBytes(bytes: number): string {
+    const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+    let value = Math.max(0, bytes);
+    let unitIndex = 0;
+
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+
+    const rounded = value >= 100 || unitIndex === 0 ? Math.round(value).toString() : value.toFixed(1);
+
+    return `${rounded} ${units[unitIndex]}`;
+  }
+
+  private formatMoscowDate(endsAt: Date): string {
+    return new Intl.DateTimeFormat('ru-RU', {
+      timeZone: 'Europe/Moscow',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .format(endsAt)
+      .replace(',', '') + ' (МСК)';
+  }
+
+  private formatRemainingTime(endsAt: Date): string {
+    const diffMs = Math.max(0, endsAt.getTime() - Date.now());
+    const totalMinutes = Math.floor(diffMs / 60000);
+    const days = Math.floor(totalMinutes / (24 * 60));
+    const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+    const minutes = totalMinutes % 60;
+
+    return `${days} дн ${hours} ч ${minutes} мин`;
+  }
+
+  private escapeHtml(value: string): string {
+    return value
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
   }
 
   private async verifyYooKassaPayment(paymentId: string): Promise<YooKassaPayment> {
