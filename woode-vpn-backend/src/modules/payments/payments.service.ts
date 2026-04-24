@@ -22,6 +22,29 @@ interface YooKassaPayment {
   metadata?: Record<string, string>;
 }
 
+const PLAN_PRICE_CENTS: Record<number, Record<number, number>> = {
+  30: {
+    5: 10000,
+    10: 15000,
+    15: 20000,
+  },
+  90: {
+    5: 27000,
+    10: 40000,
+    15: 54000,
+  },
+  180: {
+    5: 51000,
+    10: 76000,
+    15: 100000,
+  },
+  365: {
+    5: 100000,
+    10: 145000,
+    15: 200000,
+  },
+};
+
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
@@ -29,7 +52,7 @@ export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
-  ) {}
+  ) { }
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
     const startedAt = Date.now();
@@ -49,12 +72,12 @@ export class PaymentsService {
     // In dev mode, skip payment verification and emulate a successful payment.
     const payment: YooKassaPayment = isDev
       ? {
-          id: rawPaymentId,
-          status: 'succeeded',
-          paid: true,
-          amount: { value: '100' },
-          metadata: webhookMetadata,
-        }
+        id: rawPaymentId,
+        status: 'succeeded',
+        paid: true,
+        amount: { value: '100' },
+        metadata: webhookMetadata,
+      }
       : await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};
@@ -78,6 +101,8 @@ export class PaymentsService {
       throw new BadRequestException('YooKassa payment metadata.days must be a positive integer');
     }
 
+    const deviceLimit = metadata.deviceLimit ? Number(metadata.deviceLimit) : undefined;
+
     const amountCents = this.toCents(payment.amount?.value);
 
     const response = await this.confirmPayment({
@@ -85,6 +110,7 @@ export class PaymentsService {
       days,
       paymentId: payment.id,
       amountCents,
+      deviceLimit,
     });
 
     this.logger.log(
@@ -104,7 +130,7 @@ export class PaymentsService {
     const isDev = process.env.IS_DEV === 'true';
 
     this.logger.log(
-      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
+      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
     );
 
     if (dto.paymentId) {
@@ -134,6 +160,23 @@ export class PaymentsService {
 
     const now = new Date();
     const days = dto.days ?? (dto.months ? dto.months * 30 : 30);
+    const deviceLimit = dto.deviceLimit ?? 5;
+
+    const expectedAmountCents = this.resolvePlanPrice(days, deviceLimit);
+    if (
+      typeof expectedAmountCents === 'number' &&
+      typeof dto.amountCents === 'number' &&
+      dto.amountCents !== expectedAmountCents
+    ) {
+      throw new BadRequestException(
+        `Invalid amount for selected plan: expected ${expectedAmountCents}, got ${dto.amountCents}`,
+      );
+    }
+
+    const amountCents =
+      typeof expectedAmountCents === 'number'
+        ? expectedAmountCents
+        : dto.amountCents;
 
     const latestSubscription = await this.prisma.subscription.findFirst({
       where: { userId: user.id },
@@ -159,7 +202,7 @@ export class PaymentsService {
         startsAt,
         endsAt,
         paymentId: dto.paymentId ?? (isDev ? `dev-${Date.now()}` : undefined),
-        amountCents: dto.amountCents,
+        amountCents,
       },
     });
 
@@ -235,5 +278,19 @@ export class PaymentsService {
       .map(([key, value]) => [key, String(value)]);
 
     return Object.fromEntries(metadataEntries);
+  }
+
+  private resolvePlanPrice(days: number, deviceLimit: number): number | undefined {
+    const dayPrices = PLAN_PRICE_CENTS[days];
+    if (!dayPrices) {
+      return undefined;
+    }
+
+    const price = dayPrices[deviceLimit];
+    if (typeof price !== 'number') {
+      throw new BadRequestException('Unsupported number of devices for selected period');
+    }
+
+    return price;
   }
 }

@@ -3,6 +3,7 @@ import { Context, Input, Markup, Telegraf } from 'telegraf';
 import QRCode from 'qrcode';
 import { BackendClient } from './backend.js';
 
+
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 const backendBaseUrl = process.env.BACKEND_BASE_URL;
 
@@ -26,79 +27,115 @@ const bot = new Telegraf(botToken, {
 });
 
 const DAY_PLANS = [30, 90, 180, 365] as const;
+const DEVICE_PLANS = [5, 10, 15] as const;
+
+const PRICE_BY_PLAN: Record<(typeof DAY_PLANS)[number], Record<(typeof DEVICE_PLANS)[number], number>> = {
+  30: { 5: 100, 10: 150, 15: 200 },
+  90: { 5: 270, 10: 400, 15: 540 },
+  180: { 5: 510, 10: 760, 15: 1000 },
+  365: { 5: 1000, 10: 1450, 15: 2000 },
+};
+
+const defaultCaption = [
+  '<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅',
+  '',
+  'Возможности:',
+  '<blockquote>🚀 Высокая скорость',
+  '🔄 Надежность',
+  '💬 Быстрая поддержка',
+  '📱💻 Доступно на всех устройствах</blockquote>'].join('\n');
 
 type CallbackData =
   | 'MENU_MAIN'
   | 'MENU_BUY'
   | 'TRIAL'
   | 'ACTION_CONFIG'
-  | 'ACTION_HAPP'
-  | 'ACTION_HAPP_HELP'
-  | 'ACTION_QR'
-  | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`;
+  | `BUY_DAYS_${(typeof DAY_PLANS)[number]}`
+  | `BUY_DEVICES_${(typeof DAY_PLANS)[number]}_${(typeof DEVICE_PLANS)[number]}`;
 
 function buildHappAddUrl(subscriptionUrl: string): string {
   return `happ://add/${encodeURIComponent(subscriptionUrl)}`;
 }
 
-function buildSubscriptionLinkText(subscriptionUrl: string): string {
-  return `Ваша ссылка на подписку:\n<code>${subscriptionUrl}</code>`;
+function formatMoscowDate(endsAt: string | Date): string {
+  const date = endsAt instanceof Date ? endsAt : new Date(endsAt);
+  const formatted = new Intl.DateTimeFormat('ru-RU', {
+    timeZone: 'Europe/Moscow',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+
+  return `${formatted.replace(',', '')} (МСК)`;
 }
 
-function buildHappLinkText(subscriptionUrl: string): string {
-  return `Ссылка для Happ:\n<code>${buildHappAddUrl(subscriptionUrl)}</code>`;
+function formatRemainingTime(endsAt: string | Date): string {
+  const endTs = endsAt instanceof Date ? endsAt.getTime() : new Date(endsAt).getTime();
+  const nowTs = Date.now();
+  const diffMs = Math.max(0, endTs - nowTs);
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return `${days} дн ${hours} ч ${minutes} мин`;
 }
 
-function buildHappInstructionsText(subscriptionUrl: string): string {
-  return [
-    '<b>📲 Как подключить подписку в Happ</b>',
-    '',
-    '1️⃣ Скопируйте ссылку ниже',
-    '2️⃣ Вставьте в Happ вручную через',
-    '   • Добавить подписку',
-    '   • Вставить из буфера обмена',
-    '3️⃣ Для быстрого входа можно использовать кнопку <b>QR Код</b>.',
-    '',
-    '<b>🔗 Ссылка подписки:</b>',
-    `<code>${subscriptionUrl}</code>`,
-  ].join('\n');
-}
-
-async function editCurrentMessage(
+async function renderMediaMessage(
   ctx: Context,
-  text: string,
-  options?: {
+  caption: string,
+  options: {
     subscriptionUrl?: string;
-    parseMode?: 'HTML' | 'MarkdownV2';
-    keyboard?: ReturnType<typeof Markup.inlineKeyboard>;
+    keyboard: ReturnType<typeof Markup.inlineKeyboard>;
   },
 ): Promise<void> {
-  const parseMode = options?.parseMode ?? 'HTML';
-  const replyMarkup = options?.keyboard ?? postActionKeyboard(options?.subscriptionUrl);
+  const media = options.subscriptionUrl
+    ? Input.fromBuffer(
+      await QRCode.toBuffer(buildHappAddUrl(options.subscriptionUrl), {
+        type: 'png',
+        margin: 2,
+        width: 700,
+        errorCorrectionLevel: 'M',
+      }),
+      'subscription-qr.png',
+    )
+    : Input.fromLocalFile('./logo.jpg');
 
-  try {
-    await ctx.editMessageText(text, { parse_mode: parseMode, ...replyMarkup });
-    return;
-  } catch {
-    // If the current message is media, fallback to caption edit.
-    await ctx.editMessageCaption(text, { parse_mode: parseMode, ...replyMarkup });
+  if ('callbackQuery' in ctx.update) {
+    try {
+      await ctx.editMessageMedia(
+        {
+          type: 'photo',
+          media,
+          caption,
+          parse_mode: 'HTML',
+        },
+        options.keyboard,
+      );
+      return;
+    } catch {
+      await ctx.deleteMessage().catch(() => undefined);
+    }
   }
+
+  await ctx.replyWithPhoto(media, {
+    caption,
+    parse_mode: 'HTML',
+    reply_markup: options.keyboard.reply_markup,
+  });
 }
 
-function postActionKeyboard(subscriptionUrl?: string) {
+function postActionKeyboard() {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
-
-  if (subscriptionUrl) {
-    rows.push([Markup.button.callback('❔ подключить в Happ', 'ACTION_HAPP_HELP')]);
-    rows.push([Markup.button.callback('🔲 QR Код', 'ACTION_QR')]);
-  }
 
   rows.push([
     Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
     Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
   ]);
-
-  rows.push([Markup.button.callback('🔙 Назад к меню', 'MENU_MAIN')]);
 
   return Markup.inlineKeyboard(rows);
 }
@@ -118,6 +155,43 @@ function mainMenuKeyboard(hasSubscription: boolean) {
   ]);
 }
 
+async function buildSubscriptionCaption(
+  subscriptionUrl: string,
+  endsAt?: string | Date,
+): Promise<string> {
+  const infoLines = endsAt
+    ? [
+      `<b>📅 Дата окончания:</b> ${formatMoscowDate(endsAt)}`,
+      `<b>⏳ Осталось времени:</b> ${formatRemainingTime(endsAt)}`,
+      '',
+    ]
+    : [];
+
+  return [
+    '<b>WoodeVPN ✨</b>',
+    '',
+    '✅ У вас активна подписка!',
+    '',
+    ...infoLines,
+    '<b>📲 Как подключить подписку в Happ</b>',
+    '',
+    '1️⃣ Откройте приложение Happ',
+    '2️⃣ Нажмите «Добавить подписку»',
+    '3️⃣ Выберите «Добавить по QR коду» (выше на экране)',
+    '',
+    '<b>🔗 Ссылка подписки:</b>',
+    `<code>${subscriptionUrl}</code>`,
+  ].join('\n');
+}
+
+function buildBuyCaption(): string {
+  return [
+    '<b>Выберите продолжительность подписки:</b>',
+    '',
+    '30, 90, 180 или 365 дней.',
+  ].join('\n');
+}
+
 function buyMenuKeyboard() {
   return Markup.inlineKeyboard([
     [Markup.button.callback('30 дней', 'BUY_DAYS_30')],
@@ -128,65 +202,89 @@ function buyMenuKeyboard() {
   ]);
 }
 
+function deviceMenuKeyboard(days: (typeof DAY_PLANS)[number]) {
+  const dayPrices = PRICE_BY_PLAN[days];
 
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`5 устройств - ${dayPrices[5]} ₽`, `BUY_DEVICES_${days}_5`)],
+    [Markup.button.callback(`10 устройств - ${dayPrices[10]} ₽`, `BUY_DEVICES_${days}_10`)],
+    [Markup.button.callback(`15 устройств - ${dayPrices[15]} ₽`, `BUY_DEVICES_${days}_15`)],
+    [Markup.button.callback('Назад к периодам', 'MENU_BUY')],
+    [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
+  ]);
+}
 
-async function renderMainMenu(ctx: Context, hasSubscription: boolean = false): Promise<void> {
-  const message =
+function buildDeviceCaption(days: (typeof DAY_PLANS)[number]): string {
+  const dayPrices = PRICE_BY_PLAN[days];
 
-    ['<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅',
-      '',
-      'Возможности:',
+  return [
+    `<b>Выберите количество устройств на ${days} дней:</b>`,
+    '',
+    `5 устройств - ${dayPrices[5]} ₽`,
+    `10 устройств - ${dayPrices[10]} ₽`,
+    `15 устройств - ${dayPrices[15]} ₽`,
+  ].join('\n');
+}
 
-      '<blockquote>🚀 Высокая скорость',
-      '🔄 Надежность',
-      '💬 Быстрая поддержка',
-      '📱💻 Доступно на всех устройствах</blockquote>'].join('\n')
-
-
-  if ('callbackQuery' in ctx.update) {
-    await editCurrentMessage(ctx, message, { parseMode: 'HTML', keyboard: mainMenuKeyboard(hasSubscription) });
-    return;
-  }
-
-  await ctx.reply(message, { parse_mode: 'HTML', ...mainMenuKeyboard(hasSubscription) });
+function resolvePlanPrice(
+  days: (typeof DAY_PLANS)[number],
+  devices: (typeof DEVICE_PLANS)[number],
+): number {
+  return PRICE_BY_PLAN[days][devices];
 }
 
 
-async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
-  const message = [
-    '<b>WoodeVPN ✨</b> - быстрый и надеждный доступ в интернет! ✅',
-    '',
-    'Вам выдана пробная подписка!',
-    `Активна до: ${endsAt.toLocaleString()}`,
-    'Ваша ссылка на подписку',
-    `<code>${subscriptionUrl}</code>`,
-    '',
-    'Возможности:',
-    '<blockquote>🚀 Высокая скорость',
-    '🔄 Надежность',
-    '💬 Быстрая поддержка',
-    '📱💻 Доступно на всех устройствах</blockquote>'
-  ].join('\n');
 
-  if ('callbackQuery' in ctx.update) {
-    await editCurrentMessage(ctx, message, {
-      subscriptionUrl,
-      parseMode: 'HTML',
-      keyboard: postActionKeyboard(subscriptionUrl),
+async function renderMainMenu(
+  ctx: Context,
+  subscriptionUrl?: string,
+  endsAt?: string,
+): Promise<void> {
+  if (!subscriptionUrl) {
+    await renderMediaMessage(ctx, defaultCaption, {
+      keyboard: mainMenuKeyboard(false),
     });
     return;
   }
 
-  await ctx.reply(message, { parse_mode: 'HTML', ...postActionKeyboard(subscriptionUrl) });
+  const subscriptionCaption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
+  await renderMediaMessage(ctx, subscriptionCaption, {
+    subscriptionUrl,
+    keyboard: postActionKeyboard(),
+  });
 }
 
-async function renderBuyMenu(ctx: Context): Promise<void> {
-  const message = [
-    'Выберите продолжительность подписки:',
-    '30, 90, 180 или 365 дней.',
+
+async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
+  const caption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
+  const captionWithExpiry = [
+    `Активна до: ${endsAt.toLocaleString('ru-RU')}`,
+    '',
+    caption,
   ].join('\n');
 
-  await ctx.editMessageText(message, buyMenuKeyboard());
+  await renderMediaMessage(ctx, captionWithExpiry, {
+    subscriptionUrl,
+    keyboard: postActionKeyboard(),
+  });
+}
+
+async function renderBuyMenu(ctx: Context, subscriptionUrl?: string): Promise<void> {
+  await renderMediaMessage(ctx, buildBuyCaption(), {
+    subscriptionUrl,
+    keyboard: buyMenuKeyboard(),
+  });
+}
+
+async function renderDeviceMenu(
+  ctx: Context,
+  days: (typeof DAY_PLANS)[number],
+  subscriptionUrl?: string,
+): Promise<void> {
+  await renderMediaMessage(ctx, buildDeviceCaption(days), {
+    subscriptionUrl,
+    keyboard: deviceMenuKeyboard(days),
+  });
 }
 
 async function registerAndGetUserId(ctx: Context): Promise<number> {
@@ -212,119 +310,47 @@ async function renderConfig(ctx: Context): Promise<void> {
   const profile = await backend.getProfile(userId);
 
   if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editCurrentMessage(
-      ctx,
-      'Активная подписка не найдена. Сначала выберите план.',
-    );
-    return;
-  }
-
-  await editCurrentMessage(
-    ctx,
-    buildSubscriptionLinkText(profile.subscriptionUrl),
-    { subscriptionUrl: profile.subscriptionUrl },
-  );
-}
-
-async function renderSubscriptionQrCode(ctx: Context): Promise<void> {
-  const userId = await registerAndGetUserId(ctx);
-  const profile = await backend.getProfile(userId);
-
-  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
-      keyboard: postActionKeyboard(),
+    await renderMediaMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
+      keyboard: mainMenuKeyboard(false),
     });
     return;
   }
 
-  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
-  const qrBuffer = await QRCode.toBuffer(happUrl, {
-    type: 'png',
-    margin: 2,
-    width: 700,
-    errorCorrectionLevel: 'M',
-  });
-
-  const caption = [
-    'QR для добавления подписки в клиент.',
-    '',
-    'Ваша ссылка на подписку:',
-    `<code>${profile.subscriptionUrl}</code>`,
-  ].join('\n');
-
-  try {
-    await ctx.editMessageMedia(
-      {
-        type: 'photo',
-        media: Input.fromBuffer(qrBuffer, 'subscription-qr.png'),
-        caption,
-        parse_mode: 'HTML',
-      },
-      postActionKeyboard(profile.subscriptionUrl),
-    );
-  } catch {
-    // Some Telegram messages cannot be converted to media; replace visually with one photo message.
-    await ctx.deleteMessage().catch(() => undefined);
-    await ctx.replyWithPhoto(Input.fromBuffer(qrBuffer, 'subscription-qr.png'), {
-      caption,
-      ...postActionKeyboard(profile.subscriptionUrl),
-    });
-  }
-}
-
-async function sendHappDeepLink(ctx: Context): Promise<void> {
-  const userId = await registerAndGetUserId(ctx);
-  const profile = await backend.getProfile(userId);
-
-  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
-      keyboard: postActionKeyboard(),
-    });
-    return;
-  }
-
-  const happUrl = buildHappAddUrl(profile.subscriptionUrl);
-  await editCurrentMessage(
-    ctx,
-    [buildSubscriptionLinkText(profile.subscriptionUrl), buildHappLinkText(profile.subscriptionUrl)].join('\n\n'),
-    { subscriptionUrl: profile.subscriptionUrl },
-  );
-}
-
-async function renderHappInstructions(ctx: Context): Promise<void> {
-  const userId = await registerAndGetUserId(ctx);
-  const profile = await backend.getProfile(userId);
-
-  if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-    await editCurrentMessage(ctx, 'Активная подписка не найдена. Сначала выберите план.', {
-      keyboard: postActionKeyboard(),
-    });
-    return;
-  }
-
-  await editCurrentMessage(ctx, buildHappInstructionsText(profile.subscriptionUrl), {
+  await renderMediaMessage(ctx, await buildSubscriptionCaption(profile.subscriptionUrl, profile.endsAt), {
     subscriptionUrl: profile.subscriptionUrl,
-    parseMode: 'HTML',
+    keyboard: postActionKeyboard(),
   });
 }
 
-async function processBuyByDays(ctx: Context, days: number): Promise<void> {
+
+
+async function processBuyByPlan(
+  ctx: Context,
+  days: (typeof DAY_PLANS)[number],
+  devices: (typeof DEVICE_PLANS)[number],
+): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
+  const priceRub = resolvePlanPrice(days, devices);
   const result = await backend.confirmPayment({
     userId,
     days,
+    deviceLimit: devices,
+    amountCents: priceRub * 100,
   });
 
-  await ctx.editMessageText(
-    [
-      `Подписка активирована на ${days} дней.`,
-      `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
-      `Ваша ссылка на подписку: <code>${result.subscriptionUrl}</code>`,
-      '',
-      'Включает все настроенные страны и доступные соединения.',
-    ].join('\n'),
-    { parse_mode: 'HTML', ...postActionKeyboard(result.subscriptionUrl) },
-  );
+  const subscriptionCaption = await buildSubscriptionCaption(result.subscriptionUrl, result.endsAt);
+  const caption = [
+    `Подписка активирована на ${days} дней (${devices} устройств).`,
+    `Стоимость: ${priceRub} ₽`,
+    `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
+    '',
+    subscriptionCaption,
+  ].join('\n');
+
+  await renderMediaMessage(ctx, caption, {
+    subscriptionUrl: result.subscriptionUrl,
+    keyboard: postActionKeyboard(),
+  });
 }
 
 async function safeHandleCallback(ctx: Context, action: () => Promise<void>): Promise<void> {
@@ -338,24 +364,31 @@ async function safeHandleCallback(ctx: Context, action: () => Promise<void>): Pr
 
     if ('callbackQuery' in ctx.update) {
       let hasSubscription = false;
+      let subscriptionUrl: string | undefined;
 
       try {
         const userId = await registerAndGetUserId(ctx);
         const profile = await backend.getProfile(userId);
         hasSubscription = profile.hasActiveSubscription;
+        subscriptionUrl = profile.subscriptionUrl;
       } catch {
         hasSubscription = false;
       }
 
-      await editCurrentMessage(
+      await renderMediaMessage(
         ctx,
-        `${fallbackText}\n\n<b>WoodeVPN ✨</b> — быстрый и надежный доступ в интернет! ✅`,
-        { keyboard: mainMenuKeyboard(hasSubscription), parseMode: 'HTML' },
+        `${fallbackText}\n\n${defaultCaption}`,
+        {
+          subscriptionUrl,
+          keyboard: mainMenuKeyboard(hasSubscription),
+        },
       );
       return;
     }
 
-    await ctx.reply(fallbackText, mainMenuKeyboard(false));
+    await renderMediaMessage(ctx, `${fallbackText}\n\n${defaultCaption}`, {
+      keyboard: mainMenuKeyboard(false),
+    });
   }
 }
 
@@ -363,7 +396,7 @@ bot.start(async (ctx) => {
   await safeHandleCallback(ctx, async () => {
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.hasActiveSubscription);
+    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
   });
 });
 
@@ -381,18 +414,25 @@ bot.on('callback_query', async (ctx) => {
     if (data === 'MENU_MAIN') {
       const userId = await registerAndGetUserId(ctx);
       const profile = await backend.getProfile(userId);
-      await renderMainMenu(ctx, profile.hasActiveSubscription);
+      await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
       return;
     }
 
     if (data === 'MENU_BUY') {
-      await renderBuyMenu(ctx);
+      const userId = await registerAndGetUserId(ctx);
+      const profile = await backend.getProfile(userId);
+      await renderBuyMenu(ctx, profile.subscriptionUrl);
       return;
     }
 
     if (data === 'TRIAL') {
       const userId = await registerAndGetUserId(ctx);
-      const result = await backend.confirmPayment({ userId, days: 90 });
+      const result = await backend.confirmPayment({
+        userId,
+        days: 2,
+        deviceLimit: 5,
+        amountCents: 0,
+      });
       await renderGotDemoSubscriptionMenu(ctx, new Date(result.endsAt), result.subscriptionUrl);
       return;
     }
@@ -402,73 +442,47 @@ bot.on('callback_query', async (ctx) => {
       return;
     }
 
-    if (data === 'ACTION_HAPP') {
-      await sendHappDeepLink(ctx);
-      return;
-    }
-
-    if (data === 'ACTION_HAPP_HELP') {
-      await renderHappInstructions(ctx);
-      return;
-    }
-
-    if (data === 'ACTION_QR') {
-      await renderSubscriptionQrCode(ctx);
-      return;
-    }
-
     if (data.startsWith('BUY_DAYS_')) {
       const days = Number(data.replace('BUY_DAYS_', ''));
       if (!DAY_PLANS.includes(days as (typeof DAY_PLANS)[number])) {
         throw new Error('Выбран неправильный план');
       }
 
-      await processBuyByDays(ctx, days);
+      const userId = await registerAndGetUserId(ctx);
+      const profile = await backend.getProfile(userId);
+      await renderDeviceMenu(ctx, days as (typeof DAY_PLANS)[number], profile.subscriptionUrl);
+      return;
+    }
+
+    if (data.startsWith('BUY_DEVICES_')) {
+      const match = data.match(/^BUY_DEVICES_(\d+)_(\d+)$/);
+      if (!match) {
+        throw new Error('Выбран неправильный план устройств');
+      }
+
+      const days = Number(match[1]);
+      const devices = Number(match[2]);
+      if (!DAY_PLANS.includes(days as (typeof DAY_PLANS)[number])) {
+        throw new Error('Выбран неправильный период');
+      }
+      if (!DEVICE_PLANS.includes(devices as (typeof DEVICE_PLANS)[number])) {
+        throw new Error('Выбрано неправильное количество устройств');
+      }
+
+      await processBuyByPlan(
+        ctx,
+        days as (typeof DAY_PLANS)[number],
+        devices as (typeof DEVICE_PLANS)[number],
+      );
       return;
     }
 
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.hasActiveSubscription);
+    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
   });
 });
 
-bot.command('buy', async (ctx) => {
-  await safeHandleCallback(ctx, async () => {
-    await registerAndGetUserId(ctx);
-    await renderMainMenu(ctx);
-  });
-});
-
-bot.command('get_config', async (ctx) => {
-  await safeHandleCallback(ctx, async () => {
-    const userId = await registerAndGetUserId(ctx);
-    const profile = await backend.getProfile(userId);
-    if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-      await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
-      return;
-    }
-    await ctx.reply(
-      `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
-      { parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl) },
-    );
-  });
-});
-
-bot.command('config', async (ctx) => {
-  await safeHandleCallback(ctx, async () => {
-    const userId = await registerAndGetUserId(ctx);
-    const profile = await backend.getProfile(userId);
-    if (!profile.hasActiveSubscription || !profile.subscriptionUrl) {
-      await ctx.reply('Активная подписка не найдена. Используйте /start и выберите план.');
-      return;
-    }
-    await ctx.reply(
-      `Ваша ссылка на подписку:\n<code>${profile.subscriptionUrl}</code>`,
-      { parse_mode: 'HTML', ...postActionKeyboard(profile.subscriptionUrl) },
-    );
-  });
-});
 
 bot.catch((err, ctx) => {
   const updateType = ctx.updateType || 'unknown';
@@ -480,4 +494,4 @@ bot.launch();
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-console.log('Telegram bot is running');
+console.log('Telegram bot started');

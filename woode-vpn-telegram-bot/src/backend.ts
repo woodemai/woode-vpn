@@ -17,6 +17,7 @@ export interface ConfirmPaymentResponse {
 export interface UserProfileResponse {
   hasActiveSubscription: boolean;
   subscriptionUrl?: string;
+  endsAt?: string;
 }
 
 interface BackendClientOptions {
@@ -52,6 +53,8 @@ export class BackendClient {
   async confirmPayment(input: {
     userId: number;
     days: number;
+    deviceLimit?: number;
+    amountCents?: number;
   }): Promise<ConfirmPaymentResponse> {
     return this.request<ConfirmPaymentResponse>('/api/payments/confirm', {
       method: 'POST',

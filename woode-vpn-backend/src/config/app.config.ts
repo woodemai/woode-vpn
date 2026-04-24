@@ -3,6 +3,12 @@ import { registerAs } from '@nestjs/config';
 export default registerAs('app', () => ({
   port: Number(process.env.PORT ?? 3000),
   publicBaseUrl: process.env.APP_PUBLIC_BASE_URL ?? 'http://localhost:3000',
+  telegram: {
+    notificationsEnabled:
+      String(process.env.TELEGRAM_NOTIFICATIONS_ENABLED ?? 'false').toLowerCase() ===
+      'true',
+    botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
+  },
   subscription: {
     title: process.env.SUBSCRIPTION_TITLE ?? 'Woode VPN',
     supportUrl: process.env.SUBSCRIPTION_SUPPORT_URL ?? '',

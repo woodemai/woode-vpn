@@ -14,6 +14,8 @@ services:
       retries: 15
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
     networks:
       - backend
 
@@ -43,6 +45,8 @@ services:
       SUBSCRIPTION_UPDATE_INTERVAL_HOURS: ${SUBSCRIPTION_UPDATE_INTERVAL_HOURS:-1}
       SUBSCRIPTION_TOTAL_BYTES: ${SUBSCRIPTION_TOTAL_BYTES:-0}
       SUBSCRIPTION_REFRESH_FROM_XUI: ${SUBSCRIPTION_REFRESH_FROM_XUI:-true}
+      TELEGRAM_NOTIFICATIONS_ENABLED: ${TELEGRAM_NOTIFICATIONS_ENABLED:-false}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

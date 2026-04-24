@@ -40,13 +40,25 @@ model Subscription {
 }
 
 model VpnProfile {
-  id                Int      @id @default(autoincrement())
-  userId            Int      @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptionToken String   @unique
+  id                Int              @id @default(autoincrement())
+  userId            Int              @unique
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionToken String           @unique
   configs           Json?
   clientMappings    Json?
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  hwidBindings      VpnHwidBinding[]
+  active            Boolean          @default(true)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model VpnHwidBinding {
+  id          Int        @id @default(autoincrement())
+  profileId   Int
+  hwid        String     @db.VarChar(128)
+  firstSeenAt DateTime   @default(now())
+  lastSeenAt  DateTime   @default(now())
+  profile     VpnProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, hwid])
 }

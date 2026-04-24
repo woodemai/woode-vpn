@@ -27,6 +27,12 @@ export class ConfirmPaymentDto {
   amountCents?: number;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  deviceLimit?: number;
+
+  @IsOptional()
   @IsString()
   country?: string;
 }

@@ -1,6 +1,6 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { VpnService } from './vpn.service';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 
 @Controller()
@@ -8,14 +8,20 @@ export class PublicSubscriptionController {
   constructor(
     private readonly vpnService: VpnService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Get('sub/:token')
   async getSubscription(
     @Param('token') token: string,
     @Res({ passthrough: true }) response: Response,
+    @Req() request: Request,
+    @Query('hwid') hwidFromQuery?: string,
   ) {
-    const payload = await this.vpnService.getSubscriptionPayloadByToken(token);
+    const hwidHeader = request?.headers['x-hwid'] ?? request?.headers['x-device-id'];
+    const hwidFromHeader = Array.isArray(hwidHeader) ? hwidHeader[0] : hwidHeader;
+    const hwid = hwidFromQuery ?? hwidFromHeader;
+
+    const payload = await this.vpnService.getSubscriptionPayloadByToken(token, hwid);
 
     response.setHeader('Content-Type', 'text/plain; charset=utf-8');
     response.setHeader(
