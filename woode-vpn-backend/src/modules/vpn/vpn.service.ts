@@ -9,6 +9,7 @@ import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { customAlphabet } from 'nanoid';
 import { PrismaService } from '../../db/prisma.service';
+import { SubscriptionConfigService } from '../../services/subscription-config.service';
 import { SubscriptionService } from '../../services/subscription.service';
 import { TelegramNotifierService } from '../../services/telegram-notifier.service';
 import { XuiService } from '../../services/xui.service';
@@ -69,6 +70,7 @@ export class VpnService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly xuiService: XuiService,
+    private readonly subscriptionConfigService: SubscriptionConfigService,
     private readonly subscriptionService: SubscriptionService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
@@ -277,7 +279,7 @@ export class VpnService {
     const normalizedHwid = this.normalizeHwid(hwid);
 
     if (!normalizedHwid) {
-      return this.buildDeviceLimitExceededPayload(
+      return await this.buildDeviceLimitExceededPayload(
         activeSubscription.endsAt,
         'Включить передачу HWID',
       );
@@ -307,7 +309,7 @@ export class VpnService {
         currentCount: bindResult.currentCount,
         deviceLimit,
       });
-      return this.buildDeviceLimitExceededPayload(activeSubscription.endsAt);
+      return await this.buildDeviceLimitExceededPayload(activeSubscription.endsAt);
     }
 
     const currentMappings = this.parseClientMappings(profile.clientMappings);
@@ -395,21 +397,17 @@ export class VpnService {
     const usage = await this.fetchUsageTotals(token);
     const userInfo = `upload=${usage.upload}; download=${usage.download}; total=${totalBytes}; expire=${expireTs}`;
 
-    const title = this.configService.get<string>('app.subscription.title') ?? 'Woode VPN';
+    const subscriptionConfig = await this.subscriptionConfigService.get();
+    const title = subscriptionConfig.title;
     const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
     const profileUpdateIntervalHours = Math.max(
       1,
-      Number(
-        this.configService.get<number>('app.subscription.updateIntervalHours') ??
-        12,
-      ),
+      Number(subscriptionConfig.updateIntervalHours),
     );
 
-    const supportUrl =
-      this.configService.get<string>('app.subscription.supportUrl') ?? '';
-    const profileUrl =
-      this.configService.get<string>('app.subscription.profileUrl') ?? '';
-    const announce = this.configService.get<string>('app.subscription.announce') ?? '';
+    const supportUrl = subscriptionConfig.supportUrl ?? '';
+    const profileUrl = subscriptionConfig.profileUrl ?? '';
+    const announce = subscriptionConfig.announce;
 
     const metaLines = [
       `#profile-title: ${title}`,
@@ -905,10 +903,10 @@ export class VpnService {
     return trimmed;
   }
 
-  private buildDeviceLimitExceededPayload(
+  private async buildDeviceLimitExceededPayload(
     expiresAt: Date,
     remark = 'Превышен лимит устройств',
-  ): {
+  ): Promise<{
     subscriptionText: string;
     plainSubscriptionText: string;
     userInfo: string;
@@ -917,22 +915,18 @@ export class VpnService {
     supportUrl: string;
     profileUrl: string;
     announce: string;
-  } {
-    const title = this.configService.get<string>('app.subscription.title') ?? 'Woode VPN';
+  }> {
+    const subscriptionConfig = await this.subscriptionConfigService.get();
+    const title = subscriptionConfig.title;
     const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
     const profileUpdateIntervalHours = Math.max(
       1,
-      Number(
-        this.configService.get<number>('app.subscription.updateIntervalHours') ??
-        12,
-      ),
+      Number(subscriptionConfig.updateIntervalHours),
     );
 
-    const supportUrl =
-      this.configService.get<string>('app.subscription.supportUrl') ?? '';
-    const profileUrl =
-      this.configService.get<string>('app.subscription.profileUrl') ?? '';
-    const announce = this.configService.get<string>('app.subscription.announce') ?? '';
+    const supportUrl = subscriptionConfig.supportUrl ?? '';
+    const profileUrl = subscriptionConfig.profileUrl ?? '';
+    const announce = subscriptionConfig.announce;
     const totalBytes = Math.max(
       0,
       Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
