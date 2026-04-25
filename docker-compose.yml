@@ -32,6 +32,7 @@ services:
       PORT: ${PORT:-3000}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://your-domain.com}
       APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       IS_DEV: ${IS_DEV:-false}
       XUI_REQUEST_TIMEOUT_MS: ${XUI_REQUEST_TIMEOUT_MS:-5000}
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-123456}
