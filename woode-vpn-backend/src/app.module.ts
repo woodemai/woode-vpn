@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import appConfig from './config/app.config';
 import xuiConfig from './config/xui.config';
 import { PrismaModule } from './db/prisma.module';
+import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { UsersModule } from './modules/users/users.module';
 import { VpnModule } from './modules/vpn/vpn.module';
@@ -18,6 +19,7 @@ import { VpnModule } from './modules/vpn/vpn.module';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    AdminModule,
     UsersModule,
     VpnModule,
     PaymentsModule,
