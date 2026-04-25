@@ -1,3 +1,4 @@
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
     IsInt,
@@ -10,12 +11,18 @@ import {
 } from 'class-validator';
 
 export class UpdateSubscriptionConfigDto {
+    @ApiPropertyOptional({ description: 'Subscription title', example: 'Woode VPN' })
     @IsOptional()
     @IsString()
     @MaxLength(255)
     @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
     title?: string;
 
+    @ApiPropertyOptional({
+        description: 'Support URL',
+        example: 'https://t.me/woodemai',
+        nullable: true,
+    })
     @IsOptional()
     @IsString()
     @MaxLength(2048)
@@ -29,6 +36,11 @@ export class UpdateSubscriptionConfigDto {
     })
     supportUrl?: string | null;
 
+    @ApiPropertyOptional({
+        description: 'Profile page URL',
+        example: 'https://example.com/profile',
+        nullable: true,
+    })
     @IsOptional()
     @IsString()
     @MaxLength(2048)
@@ -42,12 +54,14 @@ export class UpdateSubscriptionConfigDto {
     })
     profileUrl?: string | null;
 
+    @ApiPropertyOptional({ description: 'Announcement text', example: 'Maintenance at night' })
     @IsOptional()
     @IsString()
     @MaxLength(1000)
     @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
     announce?: string;
 
+    @ApiPropertyOptional({ description: 'Profile update interval in hours', example: 12 })
     @IsOptional()
     @IsInt()
     @Min(1)

@@ -21,7 +21,24 @@ async function bootstrap() {
       .setTitle('Woode VPN API')
       .setDescription('API для управления VPN сервисом')
       .setVersion('1.0')
-      .addBearerAuth()
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'Input JWT bearer token as: Bearer <token>',
+        },
+        'bearer',
+      )
+      .addApiKey(
+        {
+          type: 'apiKey',
+          in: 'header',
+          name: 'x-api-key',
+          description: 'Admin API key',
+        },
+        'x-api-key',
+      )
       .build();
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
