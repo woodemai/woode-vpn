@@ -1,8 +1,10 @@
 import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
+import { ApiBadRequestResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { VpnService } from './vpn.service';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 
+@ApiTags('Public Subscription')
 @Controller()
 export class PublicSubscriptionController {
   constructor(
@@ -11,6 +13,10 @@ export class PublicSubscriptionController {
   ) { }
 
   @Get('sub/:token')
+  @ApiOperation({ summary: 'Get plain or encoded subscription by public token' })
+  @ApiQuery({ name: 'hwid', required: false, description: 'Client hardware id' })
+  @ApiOkResponse({ description: 'Subscription payload returned' })
+  @ApiBadRequestResponse({ description: 'Subscription cannot be served' })
   async getSubscription(
     @Param('token') token: string,
     @Res({ passthrough: true }) response: Response,
