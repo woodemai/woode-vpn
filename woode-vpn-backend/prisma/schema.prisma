@@ -40,6 +40,10 @@ model Subscription {
   updatedAt               DateTime           @updatedAt
 
   @@index([userId, status])
+  @@index([status, endsAt])
+  @@index([status, endsAt, notified3DaysBefore])
+  @@index([status, endsAt, notified1DayBefore])
+  @@index([status, endsAt, notifiedAfterExpiration])
 }
 
 model VpnProfile {

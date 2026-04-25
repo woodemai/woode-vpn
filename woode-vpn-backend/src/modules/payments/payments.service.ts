@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SubscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../db/prisma.service';
@@ -66,6 +67,7 @@ export class PaymentsService {
     private readonly vpnService: VpnService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly subscriptionNotifierService: SubscriptionNotifierService,
+    private readonly configService: ConfigService,
   ) { }
 
   async createYooKassaPayment(dto: CreatePaymentDto) {
@@ -306,6 +308,7 @@ export class PaymentsService {
 
     if (dto.paymentId && user.externalId) {
       const chatId = user.externalId;
+      const logoPath = this.configService.get<string>('app.telegram.logoPath') ?? '/app/logo.jpg';
       const subscriptionUrl =
         vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '';
 
@@ -319,10 +322,16 @@ export class PaymentsService {
         trafficTotalBytes: profileSnapshot?.trafficTotalBytes,
       });
 
-      await this.telegramNotifierService.sendPhotoToChat(chatId, './logo.jpg', caption, {
+      const sent = await this.telegramNotifierService.sendPhotoToChat(chatId, logoPath, caption, {
         parseMode: 'HTML',
         replyMarkup: this.buildSubscriptionReplyMarkup(),
       });
+
+      if (!sent) {
+        this.logger.warn(
+          `Post-payment telegram notification was not sent: userId=${user.id}, chatId=${chatId}`,
+        );
+      }
     }
 
     this.logger.log(

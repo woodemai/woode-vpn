@@ -13,17 +13,17 @@ export class TelegramNotifierService {
         chatId: string,
         text: string,
         options?: { parseMode?: 'HTML'; disableWebPagePreview?: boolean },
-    ): Promise<void> {
+    ): Promise<boolean> {
         const notificationsEnabled =
             this.configService.get<boolean>('app.telegram.notificationsEnabled') ?? false;
         if (!notificationsEnabled) {
-            return;
+            return false;
         }
 
         const botToken = this.configService.get<string>('app.telegram.botToken') ?? '';
         if (!botToken) {
             this.logger.warn('Telegram notification skipped: TELEGRAM_BOT_TOKEN is not set');
-            return;
+            return false;
         }
 
         try {
@@ -45,10 +45,14 @@ export class TelegramNotifierService {
                 this.logger.warn(
                     `Telegram notification failed: status=${response.status}, chatId=${chatId}, body=${errorBody}`,
                 );
+                return false;
             }
+
+            return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'unknown error';
             this.logger.warn(`Telegram notification request failed: chatId=${chatId}, error=${message}`);
+            return false;
         }
     }
 
@@ -60,17 +64,17 @@ export class TelegramNotifierService {
             parseMode?: 'HTML';
             replyMarkup?: Record<string, unknown>;
         },
-    ): Promise<void> {
+    ): Promise<boolean> {
         const notificationsEnabled =
             this.configService.get<boolean>('app.telegram.notificationsEnabled') ?? false;
         if (!notificationsEnabled) {
-            return;
+            return false;
         }
 
         const botToken = this.configService.get<string>('app.telegram.botToken') ?? '';
         if (!botToken) {
             this.logger.warn('Telegram notification skipped: TELEGRAM_BOT_TOKEN is not set');
-            return;
+            return false;
         }
 
         try {
@@ -98,10 +102,14 @@ export class TelegramNotifierService {
                 this.logger.warn(
                     `Telegram photo notification failed: status=${response.status}, chatId=${chatId}, body=${errorBody}`,
                 );
+                return false;
             }
+
+            return true;
         } catch (error) {
             const message = error instanceof Error ? error.message : 'unknown error';
             this.logger.warn(`Telegram photo notification request failed: chatId=${chatId}, error=${message}`);
+            return false;
         }
     }
 }
