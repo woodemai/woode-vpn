@@ -25,18 +25,25 @@ model User {
 }
 
 model Subscription {
-  id          Int                @id @default(autoincrement())
-  userId      Int
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      SubscriptionStatus @default(ACTIVE)
-  startsAt    DateTime
-  endsAt      DateTime
-  paymentId   String?
-  amountCents Int?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id                      Int                @id @default(autoincrement())
+  userId                  Int
+  user                    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status                  SubscriptionStatus @default(ACTIVE)
+  startsAt                DateTime
+  endsAt                  DateTime
+  paymentId               String?
+  amountCents             Int?
+  notified3DaysBefore     Boolean            @default(false)
+  notified1DayBefore      Boolean            @default(false)
+  notifiedAfterExpiration Boolean            @default(false)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   @@index([userId, status])
+  @@index([status, endsAt])
+  @@index([status, endsAt, notified3DaysBefore])
+  @@index([status, endsAt, notified1DayBefore])
+  @@index([status, endsAt, notifiedAfterExpiration])
 }
 
 model VpnProfile {

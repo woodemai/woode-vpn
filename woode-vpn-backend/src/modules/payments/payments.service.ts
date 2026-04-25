@@ -5,11 +5,13 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { SubscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../db/prisma.service';
 import { VpnService } from '../vpn/vpn.service';
 import { TelegramNotifierService } from '../../services/telegram-notifier.service';
+import { SubscriptionNotifierService } from '../../services/subscription-notifier.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { YooKassaWebhookDto } from './dto/yookassa-webhook.dto';
@@ -64,6 +66,8 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly vpnService: VpnService,
     private readonly telegramNotifierService: TelegramNotifierService,
+    private readonly subscriptionNotifierService: SubscriptionNotifierService,
+    private readonly configService: ConfigService,
   ) { }
 
   async createYooKassaPayment(dto: CreatePaymentDto) {
@@ -276,7 +280,7 @@ export class PaymentsService {
       throw new BadRequestException('Invalid subscription dates');
     }
 
-    await this.prisma.subscription.create({
+    const newSubscription = await this.prisma.subscription.create({
       data: {
         userId: user.id,
         status: SubscriptionStatus.ACTIVE,
@@ -286,6 +290,9 @@ export class PaymentsService {
         amountCents,
       },
     });
+
+    // Reset notification flags for the new subscription
+    await this.subscriptionNotifierService.resetNotificationFlags(newSubscription.id);
 
     const profileSnapshot = dto.paymentId
       ? await this.vpnService.getUserProfile(user.id).catch(() => undefined)
@@ -301,6 +308,7 @@ export class PaymentsService {
 
     if (dto.paymentId && user.externalId) {
       const chatId = user.externalId;
+      const logoPath = this.configService.get<string>('app.telegram.logoPath') ?? '/app/logo.jpg';
       const subscriptionUrl =
         vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '';
 
@@ -314,10 +322,16 @@ export class PaymentsService {
         trafficTotalBytes: profileSnapshot?.trafficTotalBytes,
       });
 
-      await this.telegramNotifierService.sendPhotoToChat(chatId, './logo.jpg', caption, {
+      const sent = await this.telegramNotifierService.sendPhotoToChat(chatId, logoPath, caption, {
         parseMode: 'HTML',
         replyMarkup: this.buildSubscriptionReplyMarkup(),
       });
+
+      if (!sent) {
+        this.logger.warn(
+          `Post-payment telegram notification was not sent: userId=${user.id}, chatId=${chatId}`,
+        );
+      }
     }
 
     this.logger.log(
