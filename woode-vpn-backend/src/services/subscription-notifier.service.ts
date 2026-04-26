@@ -21,9 +21,6 @@ export class SubscriptionNotifierService {
     private readonly configService: ConfigService,
   ) {}
 
-  /**
-   * Check and send expiration notifications every hour
-   */
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
   async checkAndNotifyExpiredSubscriptions(): Promise<void> {
     this.logger.debug('Starting subscription expiration check...');

@@ -12,7 +12,7 @@ export class SubscriptionAccessService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly xuiService: XuiService,
-  ) {}
+  ) { }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
   async revokeExpiredSubscriptionsAccess(): Promise<void> {
@@ -36,9 +36,9 @@ export class SubscriptionAccessService {
         take: SubscriptionAccessService.BATCH_SIZE,
         ...(cursorId
           ? {
-              cursor: { id: cursorId },
-              skip: 1,
-            }
+            cursor: { id: cursorId },
+            skip: 1,
+          }
           : {}),
       });
 
@@ -53,6 +53,25 @@ export class SubscriptionAccessService {
           await this.markExpired(subscription.id);
           this.logger.log(
             `subscription marked expired without profile: subscriptionId=${subscription.id}, userId=${subscription.userId}`,
+          );
+          continue;
+        }
+
+        const nextActiveSubscription = await this.prisma.subscription.findFirst(
+          {
+            where: {
+              userId: subscription.userId,
+              status: SubscriptionStatus.ACTIVE,
+              endsAt: { gt: now },
+            },
+            orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
+          },
+        );
+
+        if (nextActiveSubscription) {
+          await this.markExpired(subscription.id);
+          this.logger.log(
+            `subscription marked expired but access retained: subscriptionId=${subscription.id}, userId=${subscription.userId}, nextActiveSubscriptionId=${nextActiveSubscription.id}`,
           );
           continue;
         }

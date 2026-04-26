@@ -74,7 +74,7 @@ export class VpnService {
     private readonly subscriptionService: SubscriptionService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async provisionForUser(
     userId: number,
@@ -372,42 +372,35 @@ export class VpnService {
 
     let effectiveSubscriptions = subscriptions;
     const profileUpdateData: Prisma.VpnProfileUpdateInput = {};
+    let rebuiltSubscriptions: string[] = [];
 
     if (syncResult.changed) {
       profileUpdateData.clientMappings =
         syncResult.mappings as unknown as Prisma.InputJsonValue;
     }
 
+    if (syncResult.changed) {
+      rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
+        syncResult.mappings,
+      );
+    }
+
     if (refreshFromXui) {
       const liveSubscriptions = await this.fetchLiveSubscriptions(token);
-
-      if (liveSubscriptions.length) {
-        effectiveSubscriptions = liveSubscriptions;
-        profileUpdateData.configs =
-          liveSubscriptions as unknown as Prisma.InputJsonValue;
-      }
-    }
-
-    if (
-      (syncResult.changed || !effectiveSubscriptions.length) &&
-      !refreshFromXui
-    ) {
-      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
-        syncResult.mappings,
-      );
+      const mergedSubscriptions = [...liveSubscriptions];
 
       if (rebuiltSubscriptions.length) {
-        effectiveSubscriptions = rebuiltSubscriptions;
+        mergedSubscriptions.push(...rebuiltSubscriptions);
+      }
+
+      if (mergedSubscriptions.length) {
+        effectiveSubscriptions = mergedSubscriptions;
         profileUpdateData.configs =
-          rebuiltSubscriptions as unknown as Prisma.InputJsonValue;
+          mergedSubscriptions as unknown as Prisma.InputJsonValue;
       }
     }
 
-    if (refreshFromXui && syncResult.changed && !profileUpdateData.configs) {
-      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
-        syncResult.mappings,
-      );
-
+    if ((syncResult.changed || !effectiveSubscriptions.length) && !refreshFromXui) {
       if (rebuiltSubscriptions.length) {
         effectiveSubscriptions = rebuiltSubscriptions;
         profileUpdateData.configs =

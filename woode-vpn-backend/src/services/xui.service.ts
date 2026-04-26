@@ -175,14 +175,8 @@ export class XuiService {
     const inbounds = await this.getInbounds(server);
     let changedCount = 0;
 
-    this.logger.debug(
-      `Setting clients enabled=${enabled} by subId=${subId} on server ${server.id}, inboundsCount=${inbounds.length}`,)
-
     for (const inbound of inbounds) {
       const settings = this.parseInboundSettings(inbound.settings);
-      this.logger.debug(
-        `Checking inbound ${inbound.id} with remark="${inbound.remark}" for subId=${subId}: clientsCount=${settings?.clients?.length ?? 0}`,
-      );
       if (!settings?.clients?.length) {
         continue;
       }
@@ -209,7 +203,6 @@ export class XuiService {
       formData.append('id', String(inbound.id));
       formData.append('settings', JSON.stringify({ clients: updatedClients }));
 
-      this.logger.debug(formData.get('settings')?.toString() ?? 'No settings in formData');
       try {
         await this.requestWithFallback<unknown>(
           server,
@@ -227,7 +220,7 @@ export class XuiService {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown error';
-        this.logger.warn(
+        this.logger.error(
           `3x-ui client toggle failed: server=${server.id}, inboundId=${inbound.id}, enabled=${enabled}, error=${message}`,
         );
       }
