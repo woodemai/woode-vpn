@@ -132,6 +132,21 @@ export class VpnService {
 
     for (const server of servers) {
       const serverStartedAt = Date.now();
+
+      if (existingProfile?.subscriptionToken) {
+        const reenabled = await this.xuiService.setClientsEnabledBySubId(
+          server,
+          existingProfile.subscriptionToken,
+          true,
+        );
+
+        if (reenabled > 0) {
+          this.logger.log(
+            `server clients re-enabled: userId=${userId}, server=${server.id}, count=${reenabled}`,
+          );
+        }
+      }
+
       const serverConfigs: string[] = [];
       const inbounds = await this.xuiService.getInbounds(server);
       const allowedInboundIds = server.inboundIds ?? [];
@@ -750,6 +765,36 @@ export class VpnService {
       trafficUsedBytes,
       trafficTotalBytes: configuredTotalBytes > 0 ? configuredTotalBytes : null,
     };
+  }
+
+  async disableUserProfile(userId: number): Promise<void> {
+    const profile = await this.prisma.vpnProfile.findUnique({
+      where: { userId },
+    });
+
+    if (!profile?.subscriptionToken) {
+      return;
+    }
+
+    const servers = this.xuiService.getServers();
+    let disabledTotal = 0;
+
+    for (const server of servers) {
+      disabledTotal += await this.xuiService.setClientsEnabledBySubId(
+        server,
+        profile.subscriptionToken,
+        false,
+      );
+    }
+
+    await this.prisma.vpnProfile.update({
+      where: { id: profile.id },
+      data: { active: false },
+    });
+
+    this.logger.log(
+      `disableUserProfile completed: userId=${userId}, disabledClients=${disabledTotal}`,
+    );
   }
 
   private resolveDeviceLimitFromSubscription(subscription: {
