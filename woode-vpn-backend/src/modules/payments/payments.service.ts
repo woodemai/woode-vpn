@@ -68,7 +68,7 @@ export class PaymentsService {
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly subscriptionNotifierService: SubscriptionNotifierService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async createYooKassaPayment(dto: CreatePaymentDto) {
     const startedAt = Date.now();
@@ -109,24 +109,24 @@ export class PaymentsService {
     const payment =
       process.env.IS_DEV === 'true'
         ? {
-            id: `dev-${randomUUID()}`,
-            confirmation: {
-              type: 'redirect',
-              confirmation_url: this.buildDevPaymentUrl(
-                dto.userId,
-                days,
-                deviceLimit,
-                amountCents,
-              ),
-            },
-          }
+          id: `dev-${randomUUID()}`,
+          confirmation: {
+            type: 'redirect',
+            confirmation_url: this.buildDevPaymentUrl(
+              dto.userId,
+              days,
+              deviceLimit,
+              amountCents,
+            ),
+          },
+        }
         : await this.createYooKassaPaymentIntent({
-            userId: user.id,
-            days,
-            deviceLimit,
-            amountCents,
-            returnUrl: dto.returnUrl,
-          });
+          userId: user.id,
+          days,
+          deviceLimit,
+          amountCents,
+          returnUrl: dto.returnUrl,
+        });
 
     const confirmationUrl = payment.confirmation?.confirmation_url;
     if (!confirmationUrl) {
@@ -169,12 +169,12 @@ export class PaymentsService {
     // In dev mode, skip payment verification and emulate a successful payment.
     const payment: YooKassaPayment = isDev
       ? {
-          id: rawPaymentId,
-          status: 'succeeded',
-          paid: true,
-          amount: { value: '100' },
-          metadata: webhookMetadata,
-        }
+        id: rawPaymentId,
+        status: 'succeeded',
+        paid: true,
+        amount: { value: '100' },
+        metadata: webhookMetadata,
+      }
       : await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};
@@ -282,7 +282,7 @@ export class PaymentsService {
         : dto.amountCents;
 
     const latestSubscription = await this.prisma.subscription.findFirst({
-      where: { userId: user.id },
+      where: { userId: user.id, status: SubscriptionStatus.ACTIVE },
       orderBy: { endsAt: 'desc' },
     });
 
@@ -486,11 +486,10 @@ export class PaymentsService {
         `👤 <b>Профиль:</b> ${this.escapeHtml((input.profileName ?? 'не указано').trim())}`,
         `📅 <b>Дата окончания:</b> ${this.formatMoscowDate(input.endsAt)}`,
         `⏳ <b>Осталось времени:</b> ${this.formatRemainingTime(input.endsAt)}`,
-        `📱 <b>Устройства:</b> ${
-          typeof input.devicesConnected === 'number' &&
+        `📱 <b>Устройства:</b> ${typeof input.devicesConnected === 'number' &&
           typeof input.devicesMax === 'number'
-            ? `${input.devicesConnected}/${input.devicesMax}`
-            : '—'
+          ? `${input.devicesConnected}/${input.devicesMax}`
+          : '—'
         }`,
         `📊 <b>Трафик:</b> ${this.formatTraffic(input.trafficUsedBytes, input.trafficTotalBytes)}`,
       ].join('\n')}</blockquote>`,
