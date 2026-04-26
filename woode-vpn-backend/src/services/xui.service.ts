@@ -208,7 +208,8 @@ export class XuiService {
       const formData = new FormData();
       formData.append('id', String(inbound.id));
       formData.append('settings', JSON.stringify({ clients: settings.clients }));
-
+      
+      this.logger.debug(formData.get('settings')?.toString() ?? 'No settings in formData');
       try {
         await this.requestWithFallback<unknown>(
           server,
