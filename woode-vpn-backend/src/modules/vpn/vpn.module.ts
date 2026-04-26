@@ -12,4 +12,4 @@ import { VpnService } from './vpn.service';
   providers: [VpnService, SubscriptionRefreshService],
   exports: [VpnService],
 })
-export class VpnModule {}
+export class VpnModule { }

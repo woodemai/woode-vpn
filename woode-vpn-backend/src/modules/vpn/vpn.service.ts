@@ -91,7 +91,7 @@ export class VpnService {
     );
     const refreshThrottleMinutes = Number(
       this.configService.get<number>('app.subscription.refreshThrottleMinutes') ??
-        10,
+      10,
     );
 
     this.subscriptionCacheTtlMs =
