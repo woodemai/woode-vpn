@@ -175,8 +175,14 @@ export class XuiService {
     const inbounds = await this.getInbounds(server);
     let changedCount = 0;
 
+    this.logger.debug(
+      `Setting clients enabled=${enabled} by subId=${subId} on server ${server.id}, inboundsCount=${inbounds.length}`,)
+
     for (const inbound of inbounds) {
       const settings = this.parseInboundSettings(inbound.settings);
+      this.logger.debug(
+        `Checking inbound ${inbound.id} with remark="${inbound.remark}" for subId=${subId}: clientsCount=${settings?.clients?.length ?? 0}`,
+      );
       if (!settings?.clients?.length) {
         continue;
       }
@@ -198,6 +204,9 @@ export class XuiService {
         inboundChanged = true;
         inboundChangedCount += 1;
         targetClientId ??= client.uuid;
+        this.logger.debug(
+          `Client ${client.email} (id=${client.id}) in inbound ${inbound.id} matched subId=${subId} and will be ${enabled ? 'enabled' : 'disabled'} on server ${server.id}`,
+        );
       }
 
       if (!inboundChanged || !targetClientId) {
