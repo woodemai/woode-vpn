@@ -73,7 +73,7 @@ export class PaymentsService {
   async createYooKassaPayment(dto: CreatePaymentDto) {
     const startedAt = Date.now();
     this.logger.log(
-      `createYooKassaPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}`,
+      `createYooKassaPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}`,
     );
 
     const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
@@ -81,7 +81,7 @@ export class PaymentsService {
       throw new NotFoundException('User not found');
     }
 
-    const days = dto.days ?? (dto.months ? dto.months * 30 : 30);
+    const days = dto.days ?? 30;
     const deviceLimit = dto.deviceLimit ?? 5;
     const expectedAmountCents = this.resolvePlanPrice(days, deviceLimit);
 
@@ -177,11 +177,7 @@ export class PaymentsService {
       throw new BadRequestException('YooKassa payment metadata.userId must be a positive integer');
     }
 
-    const days = metadata.days
-      ? Number(metadata.days)
-      : metadata.months
-        ? Number(metadata.months) * 30
-        : 30;
+    const days = metadata.days ? Number(metadata.days) : 30;
     if (!Number.isInteger(days) || days <= 0) {
       throw new BadRequestException('YooKassa payment metadata.days must be a positive integer');
     }
@@ -215,7 +211,7 @@ export class PaymentsService {
     const isDev = process.env.IS_DEV === 'true';
 
     this.logger.log(
-      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, months=${dto.months ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
+      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
     );
 
     if (dto.paymentId) {
@@ -244,7 +240,7 @@ export class PaymentsService {
     }
 
     const now = new Date();
-    const days = dto.days ?? (dto.months ? dto.months * 30 : 30);
+    const days = dto.days ?? 30;
     const deviceLimit = dto.deviceLimit ?? 5;
 
     const expectedAmountCents = this.resolvePlanPrice(days, deviceLimit);
