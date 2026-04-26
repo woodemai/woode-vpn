@@ -32,22 +32,20 @@ export class PaymentsAdminController {
     @ApiBadRequestResponse({ description: 'Validation error or inconsistent payment data' })
     @ApiUnauthorizedResponse({ description: 'Missing or invalid ADMIN_API_KEY' })
     async confirmPayment(@Body() dto: AdminConfirmPaymentDto) {
-        const userId = Number(dto.userId);
         this.logger.log(
-            `manual payment confirm requested: userId=${userId}, paymentId=${dto.paymentId}`,
+            `manual payment confirm requested: userId=${dto.userId}, paymentId=${dto.paymentId}`,
         );
 
         const result = await this.paymentsService.confirmPayment({
-            userId: Number(dto.userId),
+            userId: dto.userId,
             days: dto.days,
-            months: dto.months,
             deviceLimit: dto.deviceLimit,
             paymentId: dto.paymentId,
             amountCents: dto.amountCents,
         });
 
         this.logger.log(
-            `manual payment confirm finished: userId=${userId}, paymentId=${dto.paymentId}, result=${result.alreadyProcessed ? 'alreadyProcessed' : 'created'}`,
+            `manual payment confirm finished: userId=${dto.userId}, paymentId=${dto.paymentId}, result=${result.alreadyProcessed ? 'alreadyProcessed' : 'created'}`,
         );
 
         return result;

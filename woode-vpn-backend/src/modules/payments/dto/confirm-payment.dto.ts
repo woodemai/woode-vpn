@@ -7,13 +7,6 @@ export class ConfirmPaymentDto {
   @Min(1)
   userId!: number;
 
-  @ApiPropertyOptional({ description: 'Subscription months', example: 1 })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(24)
-  months?: number;
-
   @ApiPropertyOptional({ description: 'Subscription days', example: 30 })
   @IsOptional()
   @IsInt()
@@ -38,9 +31,4 @@ export class ConfirmPaymentDto {
   @Min(1)
   @Max(100)
   deviceLimit?: number;
-
-  @ApiPropertyOptional({ description: 'Preferred country code', example: 'NL' })
-  @IsOptional()
-  @IsString()
-  country?: string;
 }
