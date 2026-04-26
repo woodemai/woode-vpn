@@ -193,14 +193,12 @@ export class XuiService {
 
       const filteredClients = settings.clients.filter(client => client.subId === subId && client.enable !== enabled)
 
-      const updateClients = filteredClients.forEach(client => {
-        client.enable = enabled;
+      const updatedClients = filteredClients.map(client => {
         inboundChanged = true;
         inboundChangedCount += 1;
         targetClientId ??= client.id;
-        this.logger.debug(
-          `Client ${client.email} (id=${client.id}) in inbound ${inbound.id} matched subId=${subId} and will be ${enabled ? 'enabled' : 'disabled'} on server ${server.id}`,
-        );
+
+        return { ...client, enable: enabled }
       })
 
       if (!inboundChanged || !targetClientId) {
@@ -209,8 +207,8 @@ export class XuiService {
 
       const formData = new FormData();
       formData.append('id', String(inbound.id));
-      formData.append('settings', JSON.stringify({ clients: updateClients }));
-      
+      formData.append('settings', JSON.stringify({ clients: updatedClients }));
+
       this.logger.debug(formData.get('settings')?.toString() ?? 'No settings in formData');
       try {
         await this.requestWithFallback<unknown>(
