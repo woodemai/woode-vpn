@@ -27,6 +27,7 @@ services:
     restart: unless-stopped
     init: true
     environment:
+      TZ: Europe/Moscow
       DATABASE_URL: postgresql://${POSTGRES_USER:-woode}:${POSTGRES_PASSWORD:-woode_password}@postgres:5432/${POSTGRES_DB:-woode_vpn}?schema=public
       NODE_ENV: production
       PORT: ${PORT:-3000}
@@ -75,6 +76,7 @@ services:
       TELEGRAM_HANDLER_TIMEOUT_MS: ${TELEGRAM_HANDLER_TIMEOUT_MS:-30000}
       BUY_DEFAULT_MONTHS: ${BUY_DEFAULT_MONTHS:-1}
       BUY_DEFAULT_COUNTRY: ${BUY_DEFAULT_COUNTRY:-NL}
+      TZ: Europe/Moscow
       NODE_ENV: production
     depends_on:
       app:

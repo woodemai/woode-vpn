@@ -46,6 +46,7 @@ services:
       SUBSCRIPTION_REFRESH_FROM_XUI: ${SUBSCRIPTION_REFRESH_FROM_XUI:-true}
       TELEGRAM_NOTIFICATIONS_ENABLED: ${TELEGRAM_NOTIFICATIONS_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TZ: Europe/Moscow
     depends_on:
       postgres:
         condition: service_healthy
@@ -72,6 +73,7 @@ services:
       BUY_DEFAULT_MONTHS: ${BUY_DEFAULT_MONTHS:-1}
       BUY_DEFAULT_COUNTRY: ${BUY_DEFAULT_COUNTRY:-NL}
       NODE_ENV: production
+      TZ: Europe/Moscow
     depends_on:
       app:
         condition: service_healthy
