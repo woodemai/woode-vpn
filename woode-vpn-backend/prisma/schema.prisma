@@ -53,6 +53,7 @@ model VpnProfile {
   subscriptionToken String           @unique
   configs           Json?
   clientMappings    Json?
+  lastRefreshedAt   DateTime?
   hwidBindings      VpnHwidBinding[]
   active            Boolean          @default(true)
   createdAt         DateTime         @default(now())
