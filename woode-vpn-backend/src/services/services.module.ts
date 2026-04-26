@@ -1,6 +1,7 @@
 import { HttpModule } from '@nestjs/axios';
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../db/prisma.module';
+import { SubscriptionAccessService } from './subscription-access.service';
 import { SubscriptionConfigService } from './subscription-config.service';
 import { SubscriptionNotifierService } from './subscription-notifier.service';
 import { SubscriptionService } from './subscription.service';
@@ -14,6 +15,7 @@ import { XuiService } from './xui.service';
     SubscriptionService,
     TelegramNotifierService,
     SubscriptionNotifierService,
+    SubscriptionAccessService,
     SubscriptionConfigService,
   ],
   exports: [

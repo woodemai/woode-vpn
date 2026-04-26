@@ -28,6 +28,17 @@ interface XuiClientStat {
   down?: number;
 }
 
+interface XuiInboundClient {
+  email?: string;
+  subId?: string;
+  enable?: boolean;
+  [key: string]: unknown;
+}
+
+interface XuiInboundSettings {
+  clients?: XuiInboundClient[];
+}
+
 interface XuiClientInput {
   id: string;
   email: string;
@@ -147,6 +158,70 @@ export class XuiService {
 
       throw error;
     }
+  }
+
+  async setClientsEnabledBySubId(
+    server: XuiServerConfig,
+    subId: string,
+    enabled: boolean,
+  ): Promise<number> {
+    const inbounds = await this.getInbounds(server);
+    let changedCount = 0;
+
+    for (const inbound of inbounds) {
+      const settings = this.parseInboundSettings(inbound.settings);
+      if (!settings?.clients?.length) {
+        continue;
+      }
+
+      let inboundChanged = false;
+      let inboundChangedCount = 0;
+
+      for (const client of settings.clients) {
+        if (client.subId !== subId) {
+          continue;
+        }
+
+        if (client.enable === enabled) {
+          continue;
+        }
+
+        client.enable = enabled;
+        inboundChanged = true;
+        inboundChangedCount += 1;
+      }
+
+      if (!inboundChanged) {
+        continue;
+      }
+
+      const payload = new URLSearchParams({
+        id: String(inbound.id),
+        settings: JSON.stringify(settings),
+      });
+
+      try {
+        await this.requestWithFallback<unknown>(
+          server,
+          'POST',
+          ['panel/api/inbounds/updateClient'],
+          payload.toString(),
+          {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'X-Requested-With': 'XMLHttpRequest',
+            Accept: 'application/json, text/plain, */*',
+          },
+        );
+        changedCount += inboundChangedCount;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'unknown error';
+        this.logger.warn(
+          `3x-ui client toggle failed: server=${server.id}, inboundId=${inbound.id}, enabled=${enabled}, error=${message}`,
+        );
+      }
+    }
+
+    return changedCount;
   }
 
   async getSubscription(server: XuiServerConfig, subscriptionToken: string): Promise<string> {
@@ -327,5 +402,21 @@ export class XuiService {
     const base = server.baseUrl.endsWith('/') ? server.baseUrl : `${server.baseUrl}/`;
     const normalizedPath = path.replace(/^\/+/, '');
     return new URL(normalizedPath, base).toString();
+  }
+
+  private parseInboundSettings(raw?: string): XuiInboundSettings | undefined {
+    if (!raw) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(raw) as XuiInboundSettings;
+      if (!Array.isArray(parsed.clients)) {
+        parsed.clients = [];
+      }
+      return parsed;
+    } catch {
+      return undefined;
+    }
   }
 }
