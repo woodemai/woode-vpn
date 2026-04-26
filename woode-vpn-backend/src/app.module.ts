@@ -10,6 +10,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { UsersModule } from './modules/users/users.module';
 import { VpnModule } from './modules/vpn/vpn.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { VpnModule } from './modules/vpn/vpn.module';
     UsersModule,
     VpnModule,
     PaymentsModule,
+    MonitoringModule,
   ],
   controllers: [AppController],
   providers: [AppService],
