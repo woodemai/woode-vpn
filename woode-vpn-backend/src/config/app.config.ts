@@ -24,5 +24,11 @@ export default registerAs('app', () => ({
       String(
         process.env.SUBSCRIPTION_REFRESH_FROM_XUI ?? 'true',
       ).toLowerCase() === 'true',
+    cacheTtlMinutes: Number(
+      process.env.SUBSCRIPTION_CONFIG_CACHE_TTL_MINUTES ?? 10,
+    ),
+    refreshThrottleMinutes: Number(
+      process.env.SUBSCRIPTION_REFRESH_THROTTLE_MINUTES ?? 10,
+    ),
   },
 }));

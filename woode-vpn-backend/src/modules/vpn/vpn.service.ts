@@ -34,6 +34,11 @@ interface InboundSettingsPayload {
   clients?: InboundSettingsClient[];
 }
 
+interface CachedSubscription {
+  configs: string[];
+  expiresAt: number;
+}
+
 type DeviceBindResult =
   | { status: 'existing' }
   | { status: 'created'; currentCount: number }
@@ -66,6 +71,12 @@ const generateSubscriptionToken = customAlphabet(
 @Injectable()
 export class VpnService {
   private readonly logger = new Logger(VpnService.name);
+  private readonly subscriptionConfigsCache = new Map<
+    string,
+    CachedSubscription
+  >();
+  private readonly subscriptionCacheTtlMs: number;
+  private readonly refreshThrottleMs: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -74,7 +85,24 @@ export class VpnService {
     private readonly subscriptionService: SubscriptionService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {
+    const cacheTtlMinutes = Number(
+      this.configService.get<number>('app.subscription.cacheTtlMinutes') ?? 10,
+    );
+    const refreshThrottleMinutes = Number(
+      this.configService.get<number>('app.subscription.refreshThrottleMinutes') ??
+      10,
+    );
+
+    this.subscriptionCacheTtlMs =
+      Number.isFinite(cacheTtlMinutes) && cacheTtlMinutes > 0
+        ? cacheTtlMinutes * 60_000
+        : 10 * 60_000;
+    this.refreshThrottleMs =
+      Number.isFinite(refreshThrottleMinutes) && refreshThrottleMinutes > 0
+        ? refreshThrottleMinutes * 60_000
+        : 10 * 60_000;
+  }
 
   async provisionForUser(
     userId: number,
@@ -254,6 +282,8 @@ export class VpnService {
       },
     });
 
+    this.setCachedSubscriptions(token, subscriptions);
+
     const subscriptionText =
       this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
     const subscriptionUrl = this.buildSubscriptionUrl(
@@ -353,66 +383,15 @@ export class VpnService {
       );
     }
 
-    const currentMappings = this.parseClientMappings(profile.clientMappings);
-    const syncResult = await this.syncProfileInbounds({
-      token,
-      userId: profile.userId,
-      user: profile.user,
-      currentMappings,
-      deviceLimit,
-    });
-
-    const subscriptions = Array.isArray(profile.configs)
+    const storedSubscriptions = Array.isArray(profile.configs)
       ? (profile.configs as string[])
       : [];
+    const cachedSubscriptions = this.getCachedSubscriptions(token);
+    const effectiveSubscriptions =
+      cachedSubscriptions ?? storedSubscriptions;
 
-    const refreshFromXui =
-      this.configService.get<boolean>('app.subscription.refreshFromXui') ??
-      true;
-
-    let effectiveSubscriptions = subscriptions;
-    const profileUpdateData: Prisma.VpnProfileUpdateInput = {};
-    let rebuiltSubscriptions: string[] = [];
-
-    if (syncResult.changed) {
-      profileUpdateData.clientMappings =
-        syncResult.mappings as unknown as Prisma.InputJsonValue;
-    }
-
-    if (syncResult.changed) {
-      rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
-        syncResult.mappings,
-      );
-    }
-
-    if (refreshFromXui) {
-      const liveSubscriptions = await this.fetchLiveSubscriptions(token);
-      const mergedSubscriptions = [...liveSubscriptions];
-
-      if (rebuiltSubscriptions.length) {
-        mergedSubscriptions.push(...rebuiltSubscriptions);
-      }
-
-      if (mergedSubscriptions.length) {
-        effectiveSubscriptions = mergedSubscriptions;
-        profileUpdateData.configs =
-          mergedSubscriptions as unknown as Prisma.InputJsonValue;
-      }
-    }
-
-    if ((syncResult.changed || !effectiveSubscriptions.length) && !refreshFromXui) {
-      if (rebuiltSubscriptions.length) {
-        effectiveSubscriptions = rebuiltSubscriptions;
-        profileUpdateData.configs =
-          rebuiltSubscriptions as unknown as Prisma.InputJsonValue;
-      }
-    }
-
-    if (Object.keys(profileUpdateData).length) {
-      await this.prisma.vpnProfile.update({
-        where: { id: profile.id },
-        data: profileUpdateData,
-      });
+    if (!cachedSubscriptions && storedSubscriptions.length) {
+      this.setCachedSubscriptions(token, storedSubscriptions);
     }
 
     const mergedPlainText = this.subscriptionService.mergePlainSubscriptions(
@@ -471,6 +450,103 @@ export class VpnService {
     };
   }
 
+  async refreshProfileConfigs(profileId: number): Promise<
+    | 'updated'
+    | 'skipped-throttled'
+    | 'skipped-no-token'
+    | 'skipped-no-active-subscription'
+  > {
+    const profile = await this.prisma.vpnProfile.findUnique({
+      where: { id: profileId },
+      include: { user: true },
+    });
+
+    if (!profile?.active || !profile.subscriptionToken) {
+      return 'skipped-no-token';
+    }
+
+    if (
+      profile.lastRefreshedAt &&
+      Date.now() - profile.lastRefreshedAt.getTime() < this.refreshThrottleMs
+    ) {
+      return 'skipped-throttled';
+    }
+
+    const activeSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId: profile.userId,
+        status: SubscriptionStatus.ACTIVE,
+        endsAt: {
+          gt: new Date(),
+        },
+      },
+      orderBy: { endsAt: 'desc' },
+    });
+
+    if (!activeSubscription) {
+      return 'skipped-no-active-subscription';
+    }
+
+    const deviceLimit =
+      this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const token = profile.subscriptionToken;
+    const currentMappings = this.parseClientMappings(profile.clientMappings);
+    const syncResult = await this.syncProfileInbounds({
+      token,
+      userId: profile.userId,
+      user: profile.user,
+      currentMappings,
+      deviceLimit,
+    });
+
+    const refreshFromXui =
+      this.configService.get<boolean>('app.subscription.refreshFromXui') ??
+      true;
+
+    const nextConfigs: string[] = [];
+
+    if (refreshFromXui) {
+      const liveSubscriptions = await this.fetchLiveSubscriptions(token);
+      if (liveSubscriptions.length) {
+        nextConfigs.push(...liveSubscriptions);
+      }
+    }
+
+    if (!refreshFromXui || !nextConfigs.length) {
+      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
+        syncResult.mappings,
+      );
+      if (rebuiltSubscriptions.length) {
+        nextConfigs.push(...rebuiltSubscriptions);
+      }
+    }
+
+    const fallbackConfigs = Array.isArray(profile.configs)
+      ? (profile.configs as string[])
+      : [];
+    const configsToStore = nextConfigs.length ? nextConfigs : fallbackConfigs;
+
+    const updateData: Prisma.VpnProfileUpdateInput = {
+      clientMappings: syncResult.mappings as unknown as Prisma.InputJsonValue,
+      lastRefreshedAt: new Date(),
+    };
+
+    if (configsToStore.length) {
+      updateData.configs = configsToStore as unknown as Prisma.InputJsonValue;
+    }
+
+    await this.prisma.vpnProfile.update({
+      where: { id: profile.id },
+      data: updateData,
+    });
+
+    if (configsToStore.length) {
+      this.setCachedSubscriptions(token, configsToStore);
+    }
+
+    return 'updated';
+  }
+
   private async fetchLiveSubscriptions(token: string): Promise<string[]> {
     const servers = this.xuiService
       .getServers()
@@ -480,32 +556,52 @@ export class VpnService {
       return [];
     }
 
-    const liveSubscriptions: string[] = [];
-
-    for (const server of servers) {
-      try {
-        const encodedSubscription = await this.xuiService.getSubscription(
-          server,
-          token,
-        );
-        const decodedSubscription =
-          this.subscriptionService.decodeBase64Subscription(
-            encodedSubscription,
+    const liveSubscriptions = await Promise.all(
+      servers.map(async server => {
+        try {
+          const encodedSubscription = await this.xuiService.getSubscription(
+            server,
+            token,
           );
+          const decodedSubscription =
+            this.subscriptionService.decodeBase64Subscription(
+              encodedSubscription,
+            );
 
-        if (decodedSubscription.trim()) {
-          liveSubscriptions.push(decodedSubscription);
+          return decodedSubscription.trim() ? decodedSubscription : null;
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'unknown error';
+          this.logger.warn(
+            `live subscription refresh failed: server=${server.id}, token=${token}, error=${message}`,
+          );
+          return null;
         }
-      } catch (error) {
-        const message =
-          error instanceof Error ? error.message : 'unknown error';
-        this.logger.warn(
-          `live subscription refresh failed: server=${server.id}, token=${token}, error=${message}`,
-        );
-      }
+      }),
+    );
+
+    return liveSubscriptions.filter((item): item is string => Boolean(item));
+  }
+
+  private getCachedSubscriptions(token: string): string[] | null {
+    const cached = this.subscriptionConfigsCache.get(token);
+    if (!cached) {
+      return null;
     }
 
-    return liveSubscriptions;
+    if (cached.expiresAt <= Date.now()) {
+      this.subscriptionConfigsCache.delete(token);
+      return null;
+    }
+
+    return [...cached.configs];
+  }
+
+  private setCachedSubscriptions(token: string, configs: string[]): void {
+    this.subscriptionConfigsCache.set(token, {
+      configs: [...configs],
+      expiresAt: Date.now() + this.subscriptionCacheTtlMs,
+    });
   }
 
   private parseClientMappings(raw: Prisma.JsonValue | null): ClientMapping[] {
@@ -827,6 +923,8 @@ export class VpnService {
       where: { id: profile.id },
       data: { active: false },
     });
+
+    this.subscriptionConfigsCache.delete(profile.subscriptionToken);
 
     this.logger.log(
       `disableUserProfile completed: userId=${userId}, disabledClients=${disabledTotal}`,
