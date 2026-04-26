@@ -203,7 +203,7 @@ export class XuiService {
         client.enable = enabled;
         inboundChanged = true;
         inboundChangedCount += 1;
-        targetClientId ??= client.uuid;
+        targetClientId ??= client.id;
         this.logger.debug(
           `Client ${client.email} (id=${client.id}) in inbound ${inbound.id} matched subId=${subId} and will be ${enabled ? 'enabled' : 'disabled'} on server ${server.id}`,
         );
@@ -239,7 +239,7 @@ export class XuiService {
         );
       }
     }
-
+    
     return changedCount;
   }
 
