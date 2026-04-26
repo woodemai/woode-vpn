@@ -152,7 +152,7 @@ export class SubscriptionNotifierService {
               callback_data: 'MENU_BUY',
             },
             {
-              text: '📊 Моя подписка',
+              text: '⚙️ Моя подписка',
               callback_data: 'ACTION_CONFIG',
             },
           ],

@@ -495,14 +495,14 @@ export class PaymentsService {
         `📊 <b>Трафик:</b> ${this.formatTraffic(input.trafficUsedBytes, input.trafficTotalBytes)}`,
       ].join('\n')}</blockquote>`,
       '',
-      '✅ У вас активна подписка!',
+      '✅ Подписка успешно продлена!',
       '',
     ];
 
     if (!input.subscriptionUrl) {
       return [
         ...baseParts,
-        '✅ У вас активна подписка, ссылка готовится.',
+        'Ссылка готовится.',
       ].join('\n');
     }
 

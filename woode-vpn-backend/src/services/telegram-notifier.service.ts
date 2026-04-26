@@ -12,7 +12,7 @@ export class TelegramNotifierService {
   async sendToChat(
     chatId: string,
     text: string,
-    options?: { parseMode?: 'HTML'; disableWebPagePreview?: boolean },
+    options?: { parseMode?: 'HTML'; disableWebPagePreview?: boolean, replyMarkup?: Record<string, unknown>   },
   ): Promise<boolean> {
     const notificationsEnabled =
       this.configService.get<boolean>('app.telegram.notificationsEnabled') ??
@@ -43,6 +43,7 @@ export class TelegramNotifierService {
             text,
             parse_mode: options?.parseMode,
             disable_web_page_preview: options?.disableWebPagePreview ?? true,
+            reply_markup: options?.replyMarkup,
           }),
         },
       );
