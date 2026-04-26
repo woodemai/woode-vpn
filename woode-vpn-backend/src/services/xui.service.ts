@@ -29,10 +29,12 @@ interface XuiClientStat {
 }
 
 interface XuiInboundClient {
+  uuid?: string;
   email?: string;
   subId?: string;
   enable?: boolean;
   [key: string]: unknown;
+  id?: string;
 }
 
 interface XuiInboundSettings {
@@ -181,6 +183,7 @@ export class XuiService {
 
       let inboundChanged = false;
       let inboundChangedCount = 0;
+      let targetClientId: string | undefined;
 
       for (const client of settings.clients) {
         if (client.subId !== subId) {
@@ -194,25 +197,26 @@ export class XuiService {
         client.enable = enabled;
         inboundChanged = true;
         inboundChangedCount += 1;
+        targetClientId ??= client.uuid;
       }
 
-      if (!inboundChanged) {
+      if (!inboundChanged || !targetClientId) {
         continue;
       }
 
-      const payload = new URLSearchParams({
-        id: String(inbound.id),
-        settings: JSON.stringify(settings),
-      });
+      const formData = new FormData();
+      formData.append('id', String(inbound.id));
+      formData.append('settings', JSON.stringify(settings));
 
       try {
         await this.requestWithFallback<unknown>(
           server,
           'POST',
-          ['panel/api/inbounds/updateClient'],
-          payload.toString(),
+          [
+            `panel/api/inbounds/updateClient/${encodeURIComponent(targetClientId)}`,
+          ],
+          formData,
           {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
             'X-Requested-With': 'XMLHttpRequest',
             Accept: 'application/json, text/plain, */*',
           },
@@ -391,8 +395,8 @@ export class XuiService {
           headers: {
             ...(cookie
               ? {
-                  Cookie: cookie,
-                }
+                Cookie: cookie,
+              }
               : {}),
             ...(extraHeaders ?? {}),
           },

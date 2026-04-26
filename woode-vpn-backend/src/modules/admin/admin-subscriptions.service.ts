@@ -95,6 +95,18 @@ export class AdminSubscriptionsService {
     };
   }
 
+  private buildCancellationReplyMarkup(): Record<string, unknown> {
+    return {
+      inline_keyboard: [
+        [{ text: '⚙️ Моя подписка', callback_data: 'ACTION_CONFIG' },{ text: '🔄 Продлить подписку', callback_data: 'MENU_BUY' }],
+        [
+          { text: '📰 Новости', url: 'https://t.me/woodenews' },
+          { text: '🛟 Поддержка', url: 'https://t.me/woodemai' },
+        ],
+      ],
+    };
+  }
+
   private async sendCancellationNotification(
     userId: number,
     startsAt: Date,
@@ -129,6 +141,9 @@ export class AdminSubscriptionsService {
     await this.telegramNotifierService.sendToChat(
       externalId,
       periodMessage.join('\n'),
+      {
+        replyMarkup: this.buildCancellationReplyMarkup()
+      }
     );
 
     this.logger.log(
