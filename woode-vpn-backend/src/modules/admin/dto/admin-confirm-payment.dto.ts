@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
 
 export class AdminConfirmPaymentDto {
   @IsString()
@@ -25,6 +25,7 @@ export class AdminConfirmPaymentDto {
   deviceLimit?: number;
 
   @IsString()
+  @IsNotEmpty()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   paymentId!: string;
 
