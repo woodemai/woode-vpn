@@ -27,4 +27,4 @@ import { VpnModule } from './modules/vpn/vpn.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

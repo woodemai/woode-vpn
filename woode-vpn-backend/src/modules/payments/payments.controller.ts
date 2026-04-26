@@ -1,5 +1,11 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiBody, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBody,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
 import { YooKassaWebhookDto } from './dto/yookassa-webhook.dto';
@@ -8,10 +14,12 @@ import { PaymentsService } from './payments.service';
 @ApiTags('Payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly paymentsService: PaymentsService) { }
+  constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post('create')
-  @ApiOperation({ summary: 'Create YooKassa payment and return confirmation URL' })
+  @ApiOperation({
+    summary: 'Create YooKassa payment and return confirmation URL',
+  })
   @ApiBody({ type: CreatePaymentDto })
   @ApiOkResponse({ description: 'Payment created successfully' })
   @ApiBadRequestResponse({ description: 'Invalid payment request' })

@@ -21,7 +21,7 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/api')
       .expect(200)
-      .expect((response) => {
+      .expect(response => {
         expect(response.body.service).toBe('woode-vpn-backend');
         expect(response.body.status).toBe('ok');
         expect(typeof response.body.now).toBe('string');

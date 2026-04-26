@@ -60,21 +60,22 @@ export class XuiService {
     private readonly configService: ConfigService,
   ) {
     const timeoutRaw = Number(process.env.XUI_REQUEST_TIMEOUT_MS ?? '10000');
-    this.requestTimeoutMs = Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10000;
+    this.requestTimeoutMs =
+      Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10000;
   }
 
   getServers(country?: string): XuiServerConfig[] {
     const servers =
-      this.configService.get<XuiServerConfig[]>('xui.servers')?.filter(
-        (server) => server.enabled !== false,
-      ) ?? [];
+      this.configService
+        .get<XuiServerConfig[]>('xui.servers')
+        ?.filter(server => server.enabled !== false) ?? [];
 
     if (!country) {
       return servers;
     }
 
     return servers.filter(
-      (server) => server.country.toLowerCase() === country.toLowerCase(),
+      server => server.country.toLowerCase() === country.toLowerCase(),
     );
   }
 
@@ -140,13 +141,17 @@ export class XuiService {
     });
 
     try {
-      await this.requestWithFallback<unknown>(server, 'POST', [
-        'panel/api/inbounds/addClient',
-      ], payload.toString(), {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        Accept: 'application/json, text/plain, */*',
-      });
+      await this.requestWithFallback<unknown>(
+        server,
+        'POST',
+        ['panel/api/inbounds/addClient'],
+        payload.toString(),
+        {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          Accept: 'application/json, text/plain, */*',
+        },
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error';
       if (message.toLowerCase().includes('duplicate email')) {
@@ -214,7 +219,8 @@ export class XuiService {
         );
         changedCount += inboundChangedCount;
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error';
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
         this.logger.warn(
           `3x-ui client toggle failed: server=${server.id}, inboundId=${inbound.id}, enabled=${enabled}, error=${message}`,
         );
@@ -224,7 +230,10 @@ export class XuiService {
     return changedCount;
   }
 
-  async getSubscription(server: XuiServerConfig, subscriptionToken: string): Promise<string> {
+  async getSubscription(
+    server: XuiServerConfig,
+    subscriptionToken: string,
+  ): Promise<string> {
     if (!server.subscriptionUrl) {
       throw new Error(`No subscriptionUrl configured for server ${server.id}`);
     }
@@ -259,7 +268,9 @@ export class XuiService {
     }
 
     if (typeof response.data !== 'string' || !response.data.trim()) {
-      throw new Error(`3x-ui subscription response is empty for server ${server.id}`);
+      throw new Error(
+        `3x-ui subscription response is empty for server ${server.id}`,
+      );
     }
 
     this.logger.log(
@@ -282,14 +293,21 @@ export class XuiService {
     let lastError: unknown;
     for (const path of paths) {
       try {
-        const result = await this.request<T>(server, method, path, data, extraHeaders);
+        const result = await this.request<T>(
+          server,
+          method,
+          path,
+          data,
+          extraHeaders,
+        );
         this.logger.log(
           `3x-ui request success: server=${server.id}, method=${method}, path=${path}, durationMs=${Date.now() - startedAt}`,
         );
         return result;
       } catch (error) {
         lastError = error;
-        const message = error instanceof Error ? error.message : 'unknown error';
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
         this.logger.warn(
           `3x-ui request attempt failed: server=${server.id}, method=${method}, path=${path}, error=${message}`,
         );
@@ -321,7 +339,8 @@ export class XuiService {
           {
             timeout: this.requestTimeoutMs,
             headers: {
-              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'Content-Type':
+                'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
               Accept: 'application/json, text/plain, */*',
             },
@@ -346,7 +365,7 @@ export class XuiService {
       throw new Error(`No session cookie returned by server ${server.id}`);
     }
 
-    const cookie = rawCookies.map((entry) => entry.split(';')[0]).join('; ');
+    const cookie = rawCookies.map(entry => entry.split(';')[0]).join('; ');
     this.sessionCookie.set(server.id, cookie);
     this.logger.log(
       `3x-ui login success: server=${server.id}, durationMs=${Date.now() - startedAt}`,
@@ -372,8 +391,8 @@ export class XuiService {
           headers: {
             ...(cookie
               ? {
-                Cookie: cookie,
-              }
+                  Cookie: cookie,
+                }
               : {}),
             ...(extraHeaders ?? {}),
           },
@@ -399,7 +418,9 @@ export class XuiService {
   }
 
   private buildServerUrl(server: XuiServerConfig, path: string): string {
-    const base = server.baseUrl.endsWith('/') ? server.baseUrl : `${server.baseUrl}/`;
+    const base = server.baseUrl.endsWith('/')
+      ? server.baseUrl
+      : `${server.baseUrl}/`;
     const normalizedPath = path.replace(/^\/+/, '');
     return new URL(normalizedPath, base).toString();
   }

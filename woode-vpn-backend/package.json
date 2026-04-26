@@ -26,7 +26,8 @@
     "docker:logs": "docker compose logs -f app",
     "docker:vps:up": "docker compose -f docker-compose.vps.yml up -d --build",
     "docker:vps:down": "docker compose -f docker-compose.vps.yml down",
-    "docker:vps:logs": "docker compose -f docker-compose.vps.yml logs -f app caddy"
+    "docker:vps:logs": "docker compose -f docker-compose.vps.yml logs -f app caddy",
+    "format": "prettier --write ."
   },
   "dependencies": {
     "@nestjs/axios": "^4.0.1",

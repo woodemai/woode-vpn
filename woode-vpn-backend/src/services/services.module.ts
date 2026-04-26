@@ -26,4 +26,4 @@ import { XuiService } from './xui.service';
     SubscriptionConfigService,
   ],
 })
-export class ServicesModule { }
+export class ServicesModule {}

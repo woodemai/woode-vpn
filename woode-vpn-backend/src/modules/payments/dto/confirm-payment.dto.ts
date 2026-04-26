@@ -14,7 +14,10 @@ export class ConfirmPaymentDto {
   @Max(3650)
   days?: number;
 
-  @ApiPropertyOptional({ description: 'Payment provider id', example: '317d715c-000f-5001-8000-1cabdbba208c' })
+  @ApiPropertyOptional({
+    description: 'Payment provider id',
+    example: '317d715c-000f-5001-8000-1cabdbba208c',
+  })
   @IsOptional()
   @IsString()
   paymentId?: string;
