@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Prisma } from '@prisma/client';
+import { Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 import { TelegramNotifierService } from './telegram-notifier.service';
 
@@ -13,41 +13,77 @@ type SubscriptionWithUser = Prisma.SubscriptionGetPayload<{
 @Injectable()
 export class SubscriptionNotifierService {
   private readonly logger = new Logger(SubscriptionNotifierService.name);
-  private static readonly BATCH_SIZE = 500;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
   async checkAndNotifyExpiredSubscriptions(): Promise<void> {
     this.logger.debug('Starting subscription expiration check...');
 
     try {
-      const now = new Date();
-      const oneDayUpper = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-      const threeDaysLower = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-      const threeDaysUpper = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+      const threeDaysUpper = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
-      await this.processWindow('expired', {
-        status: 'ACTIVE',
-        endsAt: { lte: now },
-        notifiedAfterExpiration: false,
+      const users = await this.prismaService.user.findMany({
+        where: {
+          subscriptions: {
+            some: {
+              status: SubscriptionStatus.ACTIVE,
+              endsAt: {
+                lte: threeDaysUpper,
+              },
+            },
+            none: {
+              status: SubscriptionStatus.ACTIVE,
+              endsAt: {
+                gt: threeDaysUpper,
+              },
+            },
+          },
+        },
+        include: {
+          subscriptions: {
+            where: {
+              status: SubscriptionStatus.ACTIVE,
+            },
+            orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+          },
+        },
       });
 
-      await this.processWindow('1day', {
-        status: 'ACTIVE',
-        endsAt: { gt: now, lte: oneDayUpper },
-        notified1DayBefore: false,
-      });
+      const now = Date.now();
 
-      await this.processWindow('3days', {
-        status: 'ACTIVE',
-        endsAt: { gt: threeDaysLower, lte: threeDaysUpper },
-        notified3DaysBefore: false,
-      });
+      for (const user of users) {
+        const subscription = user.subscriptions[0];
+        if (!subscription) {
+          continue;
+        }
+
+        const hoursRemaining =
+          (subscription.endsAt.getTime() - now) / (1000 * 60 * 60);
+        const type = this.resolveNotificationType(
+          subscription,
+          hoursRemaining,
+          now,
+        );
+
+        if (!type) {
+          continue;
+        }
+
+        await this.sendExpirationNotification(
+          {
+            ...subscription,
+            user,
+          },
+          type,
+          type === 'expired' ? null : Math.max(0, hoursRemaining),
+        );
+      }
 
       this.logger.debug('Subscription expiration check completed');
     } catch (error) {
@@ -59,44 +95,30 @@ export class SubscriptionNotifierService {
     }
   }
 
-  private async processWindow(
-    type: NotificationType,
-    where: Prisma.SubscriptionWhereInput,
-  ): Promise<void> {
-    let cursorId: number | undefined;
-
-    while (true) {
-      const subscriptions = await this.prismaService.subscription.findMany({
-        where,
-        include: { user: true },
-        orderBy: { id: 'asc' },
-        take: SubscriptionNotifierService.BATCH_SIZE,
-        ...(cursorId
-          ? {
-              cursor: { id: cursorId },
-              skip: 1,
-            }
-          : {}),
-      });
-
-      if (!subscriptions.length) {
-        break;
-      }
-
-      for (const subscription of subscriptions) {
-        const now = Date.now();
-        const hoursRemaining =
-          (subscription.endsAt.getTime() - now) / (1000 * 60 * 60);
-
-        await this.sendExpirationNotification(
-          subscription,
-          type,
-          type === 'expired' ? null : Math.max(0, hoursRemaining),
-        );
-      }
-
-      cursorId = subscriptions[subscriptions.length - 1].id;
+  private resolveNotificationType(
+    subscription: Pick<
+      SubscriptionWithUser,
+      'endsAt' |
+      'notifiedAfterExpiration' |
+      'notified1DayBefore' |
+      'notified3DaysBefore'
+    >,
+    hoursRemaining: number,
+    nowMs: number,
+  ): NotificationType | null {
+    if (subscription.endsAt.getTime() <= nowMs) {
+      return subscription.notifiedAfterExpiration ? null : 'expired';
     }
+
+    if (hoursRemaining <= 24) {
+      return subscription.notified1DayBefore ? null : '1day';
+    }
+
+    if (hoursRemaining > 48 && hoursRemaining <= 72) {
+      return subscription.notified3DaysBefore ? null : '3days';
+    }
+
+    return null;
   }
 
   private async sendExpirationNotification(
