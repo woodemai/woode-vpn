@@ -43,19 +43,19 @@ export class SubscriptionService {
   }
 
   mergeEncodedSubscriptions(subscriptions: string[]): string {
-    return this.encodeBase64Subscription(this.mergePlainSubscriptions(subscriptions));
+    return this.encodeBase64Subscription(
+      this.mergePlainSubscriptions(subscriptions),
+    );
   }
 
-  buildConfig(
-    input: {
-      uuid: string;
-      host: string;
-      port: number;
-      inboundRemark: string;
-      country: string;
-      streamSettingsRaw?: string;
-    },
-  ): string {
+  buildConfig(input: {
+    uuid: string;
+    host: string;
+    port: number;
+    inboundRemark: string;
+    country: string;
+    streamSettingsRaw?: string;
+  }): string {
     const streamSettings = this.parseStreamSettings(input.streamSettingsRaw);
 
     const params = new URLSearchParams();

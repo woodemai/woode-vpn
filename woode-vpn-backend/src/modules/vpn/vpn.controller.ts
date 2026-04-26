@@ -1,17 +1,16 @@
+import { Controller, Get, Header, Param, ParseIntPipe } from '@nestjs/common';
 import {
-  Controller,
-  Get,
-  Header,
-  Param,
-  ParseIntPipe,
-} from '@nestjs/common';
-import { ApiBadRequestResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { VpnService } from './vpn.service';
 
 @ApiTags('VPN')
 @Controller('vpn')
 export class VpnController {
-  constructor(private readonly vpnService: VpnService) { }
+  constructor(private readonly vpnService: VpnService) {}
 
   @Get('users/:userId/profile')
   @ApiOperation({ summary: 'Get VPN profile information for user' })
@@ -25,7 +24,9 @@ export class VpnController {
   @Header('Content-Type', 'text/plain; charset=utf-8')
   @ApiOperation({ summary: 'Get encoded subscription by token' })
   @ApiOkResponse({ description: 'Subscription returned successfully' })
-  @ApiBadRequestResponse({ description: 'Subscription token is invalid or expired' })
+  @ApiBadRequestResponse({
+    description: 'Subscription token is invalid or expired',
+  })
   async getSubscription(@Param('token') token: string) {
     return this.vpnService.getSubscriptionByToken(token);
   }

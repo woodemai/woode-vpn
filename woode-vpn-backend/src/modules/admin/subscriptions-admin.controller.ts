@@ -1,4 +1,10 @@
-import { Controller, Delete, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiNotFoundResponse,
@@ -40,8 +46,7 @@ export class SubscriptionsAdminController {
     },
   })
   @ApiBadRequestResponse({
-    description:
-      'ONLY_LAST_SUBSCRIPTION_ALLOWED | SUBSCRIPTION_NOT_ACTIVE',
+    description: 'ONLY_LAST_SUBSCRIPTION_ALLOWED | SUBSCRIPTION_NOT_ACTIVE',
   })
   @ApiNotFoundResponse({ description: 'NOT_FOUND' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid ADMIN_API_KEY' })

@@ -74,9 +74,12 @@ export class VpnService {
     private readonly subscriptionService: SubscriptionService,
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
-  async provisionForUser(userId: number, country?: string): Promise<{
+  async provisionForUser(
+    userId: number,
+    country?: string,
+  ): Promise<{
     profile: VpnProfile;
     subscriptionText: string;
     subscriptionUrl: string;
@@ -112,21 +115,27 @@ export class VpnService {
       throw new BadRequestException('No active subscription');
     }
 
-    const deviceLimit = this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const deviceLimit =
+      this.resolveDeviceLimitFromSubscription(activeSubscription);
 
     const existingProfile = await this.prisma.vpnProfile.findUnique({
       where: { userId },
     });
-    const existingMappings = this.parseClientMappings(existingProfile?.clientMappings ?? null);
+    const existingMappings = this.parseClientMappings(
+      existingProfile?.clientMappings ?? null,
+    );
 
     const servers = this.xuiService.getServers();
     if (!servers.length) {
       throw new BadRequestException('No x-ui servers configured');
     }
 
-    this.logger.log(`provisionForUser servers selected: userId=${userId}, servers=${servers.length}`);
+    this.logger.log(
+      `provisionForUser servers selected: userId=${userId}, servers=${servers.length}`,
+    );
 
-    const token = existingProfile?.subscriptionToken ?? generateSubscriptionToken();
+    const token =
+      existingProfile?.subscriptionToken ?? generateSubscriptionToken();
     const subscriptions: string[] = [];
     const mappings: ClientMapping[] = [];
 
@@ -151,8 +160,12 @@ export class VpnService {
       const inbounds = await this.xuiService.getInbounds(server);
       const allowedInboundIds = server.inboundIds ?? [];
       const selectedInbounds = inbounds
-        .filter((item) => allowedInboundIds.length === 0 || allowedInboundIds.includes(item.id))
-        .filter((item) => item.protocol === 'vless');
+        .filter(
+          item =>
+            allowedInboundIds.length === 0 ||
+            allowedInboundIds.includes(item.id),
+        )
+        .filter(item => item.protocol === 'vless');
 
       this.logger.log(
         `server inbounds prepared: userId=${userId}, server=${server.id}, total=${inbounds.length}, selectedVless=${selectedInbounds.length}`,
@@ -164,7 +177,7 @@ export class VpnService {
 
       for (const inbound of selectedInbounds) {
         const existingMapping = existingMappings.find(
-          (mapping) =>
+          mapping =>
             mapping.serverId === server.id && mapping.inboundId === inbound.id,
         );
         const uuid = existingMapping?.uuid ?? randomUUID();
@@ -200,10 +213,14 @@ export class VpnService {
       }
 
       if (server.subscriptionUrl) {
-        const encodedSubscription = await this.xuiService.getSubscription(server, token);
-        const decodedSubscription = this.subscriptionService.decodeBase64Subscription(
-          encodedSubscription,
+        const encodedSubscription = await this.xuiService.getSubscription(
+          server,
+          token,
         );
+        const decodedSubscription =
+          this.subscriptionService.decodeBase64Subscription(
+            encodedSubscription,
+          );
         subscriptions.push(decodedSubscription);
         this.logger.log(
           `server subscription collected: userId=${userId}, server=${server.id}, decodedLength=${decodedSubscription.length}`,
@@ -237,8 +254,11 @@ export class VpnService {
       },
     });
 
-    const subscriptionText = this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
-    const subscriptionUrl = this.buildSubscriptionUrl(profile.subscriptionToken);
+    const subscriptionText =
+      this.subscriptionService.mergeEncodedSubscriptions(subscriptions);
+    const subscriptionUrl = this.buildSubscriptionUrl(
+      profile.subscriptionToken,
+    );
 
     this.logger.log(
       `provisionForUser finished: userId=${userId}, subscriptions=${subscriptions.length}, durationMs=${Date.now() - startedAt}`,
@@ -256,7 +276,10 @@ export class VpnService {
     return payload.subscriptionText;
   }
 
-  async getSubscriptionPayloadByToken(token: string, hwid?: string): Promise<{
+  async getSubscriptionPayloadByToken(
+    token: string,
+    hwid?: string,
+  ): Promise<{
     subscriptionText: string;
     plainSubscriptionText: string;
     userInfo: string;
@@ -290,7 +313,8 @@ export class VpnService {
       throw new BadRequestException('Subscription expired');
     }
 
-    const deviceLimit = this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const deviceLimit =
+      this.resolveDeviceLimitFromSubscription(activeSubscription);
     const normalizedHwid = this.normalizeHwid(hwid);
 
     if (!normalizedHwid) {
@@ -324,7 +348,9 @@ export class VpnService {
         currentCount: bindResult.currentCount,
         deviceLimit,
       });
-      return await this.buildDeviceLimitExceededPayload(activeSubscription.endsAt);
+      return await this.buildDeviceLimitExceededPayload(
+        activeSubscription.endsAt,
+      );
     }
 
     const currentMappings = this.parseClientMappings(profile.clientMappings);
@@ -341,7 +367,8 @@ export class VpnService {
       : [];
 
     const refreshFromXui =
-      this.configService.get<boolean>('app.subscription.refreshFromXui') ?? true;
+      this.configService.get<boolean>('app.subscription.refreshFromXui') ??
+      true;
 
     let effectiveSubscriptions = subscriptions;
     const profileUpdateData: Prisma.VpnProfileUpdateInput = {};
@@ -361,7 +388,10 @@ export class VpnService {
       }
     }
 
-    if ((syncResult.changed || !effectiveSubscriptions.length) && !refreshFromXui) {
+    if (
+      (syncResult.changed || !effectiveSubscriptions.length) &&
+      !refreshFromXui
+    ) {
       const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
         syncResult.mappings,
       );
@@ -373,11 +403,7 @@ export class VpnService {
       }
     }
 
-    if (
-      refreshFromXui &&
-      syncResult.changed &&
-      !profileUpdateData.configs
-    ) {
+    if (refreshFromXui && syncResult.changed && !profileUpdateData.configs) {
       const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
         syncResult.mappings,
       );
@@ -406,7 +432,9 @@ export class VpnService {
 
     const totalBytes = Math.max(
       0,
-      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+      Number(
+        this.configService.get<number>('app.subscription.totalBytes') ?? 0,
+      ),
     );
     const expireTs = Math.floor(activeSubscription.endsAt.getTime() / 1000);
     const usage = await this.fetchUsageTotals(token);
@@ -434,8 +462,9 @@ export class VpnService {
     ];
 
     const plainSubscriptionText = `${metaLines.join('\n')}\n${mergedPlainText}`;
-    const subscriptionText =
-      this.subscriptionService.encodeBase64Subscription(plainSubscriptionText);
+    const subscriptionText = this.subscriptionService.encodeBase64Subscription(
+      plainSubscriptionText,
+    );
 
     return {
       subscriptionText,
@@ -452,7 +481,7 @@ export class VpnService {
   private async fetchLiveSubscriptions(token: string): Promise<string[]> {
     const servers = this.xuiService
       .getServers()
-      .filter((server) => Boolean(server.subscriptionUrl));
+      .filter(server => Boolean(server.subscriptionUrl));
 
     if (!servers.length) {
       return [];
@@ -467,13 +496,16 @@ export class VpnService {
           token,
         );
         const decodedSubscription =
-          this.subscriptionService.decodeBase64Subscription(encodedSubscription);
+          this.subscriptionService.decodeBase64Subscription(
+            encodedSubscription,
+          );
 
         if (decodedSubscription.trim()) {
           liveSubscriptions.push(decodedSubscription);
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error';
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
         this.logger.warn(
           `live subscription refresh failed: server=${server.id}, token=${token}, error=${message}`,
         );
@@ -564,7 +596,8 @@ export class VpnService {
       try {
         inbounds = await this.xuiService.getInbounds(server);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error';
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
         this.logger.warn(
           `sync inbounds skipped: userId=${input.userId}, server=${server.id}, error=${message}`,
         );
@@ -573,8 +606,12 @@ export class VpnService {
 
       const allowedInboundIds = server.inboundIds ?? [];
       const selectedInbounds = inbounds
-        .filter((item) => allowedInboundIds.length === 0 || allowedInboundIds.includes(item.id))
-        .filter((item) => item.protocol === 'vless');
+        .filter(
+          item =>
+            allowedInboundIds.length === 0 ||
+            allowedInboundIds.includes(item.id),
+        )
+        .filter(item => item.protocol === 'vless');
 
       for (const inbound of selectedInbounds) {
         const mappingKey = `${server.id}:${inbound.id}`;
@@ -584,7 +621,7 @@ export class VpnService {
 
         const email = `${emailPrefix}-${server.id}-${inbound.id}`;
         const existingClient = this.parseInboundClients(inbound.settings).find(
-          (client) => client.subId === input.token || client.email === email,
+          client => client.subId === input.token || client.email === email,
         );
 
         const uuid =
@@ -626,7 +663,7 @@ export class VpnService {
     }
 
     const servers = this.xuiService.getServers();
-    const serverById = new Map(servers.map((server) => [server.id, server]));
+    const serverById = new Map(servers.map(server => [server.id, server]));
     const grouped = new Map<string, ClientMapping[]>();
 
     for (const mapping of mappings) {
@@ -647,7 +684,8 @@ export class VpnService {
       try {
         inbounds = await this.xuiService.getInbounds(server);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'unknown error';
+        const message =
+          error instanceof Error ? error.message : 'unknown error';
         this.logger.warn(
           `build subscription skipped: server=${server.id}, error=${message}`,
         );
@@ -655,7 +693,7 @@ export class VpnService {
       }
 
       const inboundById = new Map<number, XuiInboundItem>(
-        inbounds.map((inbound) => [inbound.id, inbound]),
+        inbounds.map(inbound => [inbound.id, inbound]),
       );
 
       for (const mapping of serverMappings) {
@@ -689,11 +727,12 @@ export class VpnService {
     }
 
     const usagePerServer = await Promise.all(
-      servers.map(async (server) => {
+      servers.map(async server => {
         try {
           return await this.xuiService.getUsageBySubId(server, token);
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'unknown error';
+          const message =
+            error instanceof Error ? error.message : 'unknown error';
           this.logger.warn(
             `usage fetch failed: server=${server.id}, token=${token}, error=${message}`,
           );
@@ -741,7 +780,8 @@ export class VpnService {
       return { hasActiveSubscription: false };
     }
 
-    const devicesMax = this.resolveDeviceLimitFromSubscription(activeSubscription);
+    const devicesMax =
+      this.resolveDeviceLimitFromSubscription(activeSubscription);
     const devicesConnected = await this.prisma.vpnHwidBinding.count({
       where: { profileId: profile.id },
     });
@@ -750,10 +790,13 @@ export class VpnService {
     const trafficUsedBytes = usage.upload + usage.download;
     const configuredTotalBytes = Math.max(
       0,
-      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+      Number(
+        this.configService.get<number>('app.subscription.totalBytes') ?? 0,
+      ),
     );
 
-    const normalizedProfileName = profile.user.telegramName?.trim() || undefined;
+    const normalizedProfileName =
+      profile.user.telegramName?.trim() || undefined;
 
     return {
       hasActiveSubscription: true,
@@ -807,13 +850,18 @@ export class VpnService {
       return 5;
     }
 
-    const days = this.resolvePlanDays(subscription.startsAt, subscription.endsAt);
+    const days = this.resolvePlanDays(
+      subscription.startsAt,
+      subscription.endsAt,
+    );
     const dayPrices = PLAN_PRICE_CENTS[days];
     if (!dayPrices) {
       return 5;
     }
 
-    const matched = Object.entries(dayPrices).find(([, price]) => price === amountCents);
+    const matched = Object.entries(dayPrices).find(
+      ([, price]) => price === amountCents,
+    );
     if (!matched) {
       return 5;
     }
@@ -901,7 +949,9 @@ export class VpnService {
       `• <b>User ID:</b> ${input.userId}`,
     ].join('\n');
 
-    await this.telegramNotifierService.sendToChat(chatId, message, { parseMode: 'HTML' });
+    await this.telegramNotifierService.sendToChat(chatId, message, {
+      parseMode: 'HTML',
+    });
   }
 
   private async notifyDeviceLimitExceeded(input: {
@@ -923,7 +973,9 @@ export class VpnService {
       `• <b>User ID:</b> ${input.userId}`,
     ].join('\n');
 
-    await this.telegramNotifierService.sendToChat(chatId, message, { parseMode: 'HTML' });
+    await this.telegramNotifierService.sendToChat(chatId, message, {
+      parseMode: 'HTML',
+    });
   }
 
   private escapeHtml(value: string): string {
@@ -974,12 +1026,13 @@ export class VpnService {
     const announce = subscriptionConfig.announce;
     const totalBytes = Math.max(
       0,
-      Number(this.configService.get<number>('app.subscription.totalBytes') ?? 0),
+      Number(
+        this.configService.get<number>('app.subscription.totalBytes') ?? 0,
+      ),
     );
     const expireTs = Math.floor(expiresAt.getTime() / 1000);
     const userInfo = `upload=0; download=0; total=${totalBytes}; expire=${expireTs}`;
-    const fakeConfig =
-      `vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443?encryption=none&type=tcp&security=tls#${encodeURIComponent(remark)}`;
+    const fakeConfig = `vless://00000000-0000-0000-0000-000000000000@127.0.0.1:443?encryption=none&type=tcp&security=tls#${encodeURIComponent(remark)}`;
 
     const metaLines = [
       `#profile-title: ${title}`,
@@ -991,8 +1044,9 @@ export class VpnService {
     ];
 
     const plainSubscriptionText = `${metaLines.join('\n')}\n${fakeConfig}`;
-    const subscriptionText =
-      this.subscriptionService.encodeBase64Subscription(plainSubscriptionText);
+    const subscriptionText = this.subscriptionService.encodeBase64Subscription(
+      plainSubscriptionText,
+    );
 
     return {
       subscriptionText,

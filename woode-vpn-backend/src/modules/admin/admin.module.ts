@@ -10,12 +10,12 @@ import { AdminSubscriptionsService } from './admin-subscriptions.service';
 import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
 
 @Module({
-    imports: [ServicesModule, PaymentsModule, VpnModule, PrismaModule],
-    controllers: [
-        SubscriptionConfigController,
-        PaymentsAdminController,
-        SubscriptionsAdminController,
-    ],
-    providers: [AdminApiKeyGuard, AdminSubscriptionsService],
+  imports: [ServicesModule, PaymentsModule, VpnModule, PrismaModule],
+  controllers: [
+    SubscriptionConfigController,
+    PaymentsAdminController,
+    SubscriptionsAdminController,
+  ],
+  providers: [AdminApiKeyGuard, AdminSubscriptionsService],
 })
-export class AdminModule { }
+export class AdminModule {}

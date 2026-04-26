@@ -20,7 +20,7 @@ function parseServers(raw: string | undefined): XuiServerConfig[] {
   try {
     const parsed = JSON.parse(raw) as XuiServerConfig[];
 
-    return parsed.filter((server) => server.enabled !== false);
+    return parsed.filter(server => server.enabled !== false);
   } catch {
     return [];
   }

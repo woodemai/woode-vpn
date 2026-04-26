@@ -35,12 +35,17 @@ export class AdminSubscriptionsService {
     }
 
     const latestSubscription = await this.prisma.subscription.findFirst({
-      where: { userId: subscription.userId },
+      where: {
+        userId: subscription.userId,
+        status: SubscriptionStatus.ACTIVE,
+      },
       orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
     });
 
     if (!latestSubscription || latestSubscription.id !== subscription.id) {
-      throw new BadRequestException('Можно отменить только последнюю подписку пользователя');
+      throw new BadRequestException(
+        'Можно отменить только последнюю подписку пользователя',
+      );
     }
 
     if (subscription.status !== SubscriptionStatus.ACTIVE) {
@@ -112,12 +117,19 @@ export class AdminSubscriptionsService {
     ];
 
     if (nextActiveEndsAt) {
-      periodMessage.push('', 'ℹ️ Текущий доступ:', `до ${this.formatMoscowDate(nextActiveEndsAt)}`);
+      periodMessage.push(
+        '',
+        'ℹ️ Текущий доступ:',
+        `до ${this.formatMoscowDate(nextActiveEndsAt)}`,
+      );
     } else {
       periodMessage.push('', '❌ Доступ к VPN полностью отключён');
     }
 
-    await this.telegramNotifierService.sendToChat(externalId, periodMessage.join('\n'));
+    await this.telegramNotifierService.sendToChat(
+      externalId,
+      periodMessage.join('\n'),
+    );
 
     this.logger.log(
       `subscription cancel notification sent: userId=${userId}, nextActive=${nextActiveEndsAt ? 'yes' : 'no'}`,

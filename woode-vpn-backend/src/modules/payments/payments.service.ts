@@ -68,7 +68,7 @@ export class PaymentsService {
     private readonly telegramNotifierService: TelegramNotifierService,
     private readonly subscriptionNotifierService: SubscriptionNotifierService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   async createYooKassaPayment(dto: CreatePaymentDto) {
     const startedAt = Date.now();
@@ -76,7 +76,9 @@ export class PaymentsService {
       `createYooKassaPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}`,
     );
 
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -104,25 +106,33 @@ export class PaymentsService {
       throw new BadRequestException('Amount is required for the selected plan');
     }
 
-    const payment = process.env.IS_DEV === 'true'
-      ? {
-        id: `dev-${randomUUID()}`,
-        confirmation: {
-          type: 'redirect',
-          confirmation_url: this.buildDevPaymentUrl(dto.userId, days, deviceLimit, amountCents),
-        },
-      }
-      : await this.createYooKassaPaymentIntent({
-        userId: user.id,
-        days,
-        deviceLimit,
-        amountCents,
-        returnUrl: dto.returnUrl,
-      });
+    const payment =
+      process.env.IS_DEV === 'true'
+        ? {
+            id: `dev-${randomUUID()}`,
+            confirmation: {
+              type: 'redirect',
+              confirmation_url: this.buildDevPaymentUrl(
+                dto.userId,
+                days,
+                deviceLimit,
+                amountCents,
+              ),
+            },
+          }
+        : await this.createYooKassaPaymentIntent({
+            userId: user.id,
+            days,
+            deviceLimit,
+            amountCents,
+            returnUrl: dto.returnUrl,
+          });
 
     const confirmationUrl = payment.confirmation?.confirmation_url;
     if (!confirmationUrl) {
-      throw new InternalServerErrorException('YooKassa confirmation URL is missing');
+      throw new InternalServerErrorException(
+        'YooKassa confirmation URL is missing',
+      );
     }
 
     this.logger.log(
@@ -149,7 +159,9 @@ export class PaymentsService {
 
     const rawPaymentId = dto.object?.id;
     if (typeof rawPaymentId !== 'string' || !rawPaymentId) {
-      throw new BadRequestException('Invalid YooKassa webhook payload: payment id is missing');
+      throw new BadRequestException(
+        'Invalid YooKassa webhook payload: payment id is missing',
+      );
     }
 
     const webhookMetadata = this.extractMetadata(dto.object);
@@ -157,32 +169,40 @@ export class PaymentsService {
     // In dev mode, skip payment verification and emulate a successful payment.
     const payment: YooKassaPayment = isDev
       ? {
-        id: rawPaymentId,
-        status: 'succeeded',
-        paid: true,
-        amount: { value: '100' },
-        metadata: webhookMetadata,
-      }
+          id: rawPaymentId,
+          status: 'succeeded',
+          paid: true,
+          amount: { value: '100' },
+          metadata: webhookMetadata,
+        }
       : await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};
 
     const rawUserId = metadata.userId ?? '';
     if (!rawUserId) {
-      throw new BadRequestException('YooKassa payment metadata.userId is required');
+      throw new BadRequestException(
+        'YooKassa payment metadata.userId is required',
+      );
     }
 
     const userId = Number(rawUserId);
     if (!Number.isInteger(userId) || userId <= 0) {
-      throw new BadRequestException('YooKassa payment metadata.userId must be a positive integer');
+      throw new BadRequestException(
+        'YooKassa payment metadata.userId must be a positive integer',
+      );
     }
 
     const days = metadata.days ? Number(metadata.days) : 30;
     if (!Number.isInteger(days) || days <= 0) {
-      throw new BadRequestException('YooKassa payment metadata.days must be a positive integer');
+      throw new BadRequestException(
+        'YooKassa payment metadata.days must be a positive integer',
+      );
     }
 
-    const deviceLimit = metadata.deviceLimit ? Number(metadata.deviceLimit) : undefined;
+    const deviceLimit = metadata.deviceLimit
+      ? Number(metadata.deviceLimit)
+      : undefined;
 
     const amountCents = this.toCents(payment.amount?.value);
 
@@ -234,7 +254,9 @@ export class PaymentsService {
       }
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: dto.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -288,29 +310,40 @@ export class PaymentsService {
     });
 
     // Reset notification flags for the new subscription
-    await this.subscriptionNotifierService.resetNotificationFlags(newSubscription.id);
+    await this.subscriptionNotifierService.resetNotificationFlags(
+      newSubscription.id,
+    );
 
     const profileSnapshot = dto.paymentId
       ? await this.vpnService.getUserProfile(user.id).catch(() => undefined)
       : undefined;
 
-    let vpnProvisioning: { subscriptionUrl: string; subscriptionText: string } | undefined;
+    let vpnProvisioning:
+      | { subscriptionUrl: string; subscriptionText: string }
+      | undefined;
     try {
       vpnProvisioning = await this.vpnService.provisionForUser(user.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error';
-      this.logger.warn(`confirmPayment provisioning failed for userId=${user.id}: ${message}`);
+      this.logger.warn(
+        `confirmPayment provisioning failed for userId=${user.id}: ${message}`,
+      );
     }
 
     if (dto.paymentId && user.externalId) {
       const chatId = user.externalId;
-      const logoPath = this.configService.get<string>('app.telegram.logoPath') ?? '/app/logo.jpg';
+      const logoPath =
+        this.configService.get<string>('app.telegram.logoPath') ??
+        '/app/logo.jpg';
       const subscriptionUrl =
-        vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '';
+        vpnProvisioning?.subscriptionUrl ??
+        profileSnapshot?.subscriptionUrl ??
+        '';
 
       const caption = this.buildSubscriptionNotificationCaption({
         subscriptionUrl,
-        profileName: profileSnapshot?.profileName ?? user.telegramName ?? undefined,
+        profileName:
+          profileSnapshot?.profileName ?? user.telegramName ?? undefined,
         endsAt,
         devicesConnected: profileSnapshot?.devicesConnected,
         devicesMax: profileSnapshot?.devicesMax,
@@ -318,10 +351,15 @@ export class PaymentsService {
         trafficTotalBytes: profileSnapshot?.trafficTotalBytes,
       });
 
-      const sent = await this.telegramNotifierService.sendPhotoToChat(chatId, logoPath, caption, {
-        parseMode: 'HTML',
-        replyMarkup: this.buildSubscriptionReplyMarkup(),
-      });
+      const sent = await this.telegramNotifierService.sendPhotoToChat(
+        chatId,
+        logoPath,
+        caption,
+        {
+          parseMode: 'HTML',
+          replyMarkup: this.buildSubscriptionReplyMarkup(),
+        },
+      );
 
       if (!sent) {
         this.logger.warn(
@@ -337,7 +375,10 @@ export class PaymentsService {
     return {
       userId: user.id,
       endsAt,
-      subscriptionUrl: vpnProvisioning?.subscriptionUrl ?? profileSnapshot?.subscriptionUrl ?? '',
+      subscriptionUrl:
+        vpnProvisioning?.subscriptionUrl ??
+        profileSnapshot?.subscriptionUrl ??
+        '',
       subscriptionText: vpnProvisioning?.subscriptionText,
       alreadyProcessed: false,
     };
@@ -377,7 +418,9 @@ export class PaymentsService {
         confirmation: {
           type: 'redirect',
           return_url:
-            input.returnUrl?.trim() || process.env.APP_PUBLIC_BASE_URL || 'https://t.me',
+            input.returnUrl?.trim() ||
+            process.env.APP_PUBLIC_BASE_URL ||
+            'https://t.me',
         },
         description: `WoodeVPN ${input.days} days / ${input.deviceLimit} devices`,
         metadata: {
@@ -399,7 +442,12 @@ export class PaymentsService {
     return (await response.json()) as YooKassaCreatedPayment;
   }
 
-  private buildDevPaymentUrl(userId: number, days: number, deviceLimit: number, amountCents: number): string {
+  private buildDevPaymentUrl(
+    userId: number,
+    days: number,
+    deviceLimit: number,
+    amountCents: number,
+  ): string {
     const params = new URLSearchParams({
       userId: String(userId),
       days: String(days),
@@ -438,9 +486,12 @@ export class PaymentsService {
         `👤 <b>Профиль:</b> ${this.escapeHtml((input.profileName ?? 'не указано').trim())}`,
         `📅 <b>Дата окончания:</b> ${this.formatMoscowDate(input.endsAt)}`,
         `⏳ <b>Осталось времени:</b> ${this.formatRemainingTime(input.endsAt)}`,
-        `📱 <b>Устройства:</b> ${typeof input.devicesConnected === 'number' && typeof input.devicesMax === 'number'
-          ? `${input.devicesConnected}/${input.devicesMax}`
-          : '—'}`,
+        `📱 <b>Устройства:</b> ${
+          typeof input.devicesConnected === 'number' &&
+          typeof input.devicesMax === 'number'
+            ? `${input.devicesConnected}/${input.devicesMax}`
+            : '—'
+        }`,
         `📊 <b>Трафик:</b> ${this.formatTraffic(input.trafficUsedBytes, input.trafficTotalBytes)}`,
       ].join('\n')}</blockquote>`,
       '',
@@ -449,7 +500,10 @@ export class PaymentsService {
     ];
 
     if (!input.subscriptionUrl) {
-      return [...baseParts, '✅ У вас активна подписка, ссылка готовится.'].join('\n');
+      return [
+        ...baseParts,
+        '✅ У вас активна подписка, ссылка готовится.',
+      ].join('\n');
     }
 
     return [
@@ -466,7 +520,10 @@ export class PaymentsService {
     ].join('\n');
   }
 
-  private formatTraffic(usedBytes?: number, totalBytes?: number | null): string {
+  private formatTraffic(
+    usedBytes?: number,
+    totalBytes?: number | null,
+  ): string {
     const used = typeof usedBytes === 'number' ? usedBytes : 0;
     if (typeof totalBytes === 'number' && totalBytes > 0) {
       return `${this.formatBytes(used)}/${this.formatBytes(totalBytes)}`;
@@ -485,23 +542,28 @@ export class PaymentsService {
       unitIndex += 1;
     }
 
-    const rounded = value >= 100 || unitIndex === 0 ? Math.round(value).toString() : value.toFixed(1);
+    const rounded =
+      value >= 100 || unitIndex === 0
+        ? Math.round(value).toString()
+        : value.toFixed(1);
 
     return `${rounded} ${units[unitIndex]}`;
   }
 
   private formatMoscowDate(endsAt: Date): string {
-    return new Intl.DateTimeFormat('ru-RU', {
-      timeZone: 'Europe/Moscow',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hourCycle: 'h23',
-    })
-      .format(endsAt)
-      .replace(',', '') + ' (МСК)';
+    return (
+      new Intl.DateTimeFormat('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      })
+        .format(endsAt)
+        .replace(',', '') + ' (МСК)'
+    );
   }
 
   private formatRemainingTime(endsAt: Date): string {
@@ -523,7 +585,9 @@ export class PaymentsService {
       .replaceAll("'", '&#39;');
   }
 
-  private async verifyYooKassaPayment(paymentId: string): Promise<YooKassaPayment> {
+  private async verifyYooKassaPayment(
+    paymentId: string,
+  ): Promise<YooKassaPayment> {
     const shopId = process.env.YOOKASSA_SHOP_ID;
     const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
@@ -534,12 +598,15 @@ export class PaymentsService {
     }
 
     const token = Buffer.from(`${shopId}:${secretKey}`).toString('base64');
-    const response = await fetch(`https://api.yookassa.ru/v3/payments/${paymentId}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Basic ${token}`,
+    const response = await fetch(
+      `https://api.yookassa.ru/v3/payments/${paymentId}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Basic ${token}`,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       throw new BadRequestException(
@@ -569,20 +636,33 @@ export class PaymentsService {
     return Math.round(parsed * 100);
   }
 
-  private extractMetadata(rawObject: Record<string, unknown>): Record<string, string> {
+  private extractMetadata(
+    rawObject: Record<string, unknown>,
+  ): Record<string, string> {
     const rawMetadata = rawObject.metadata;
-    if (!rawMetadata || typeof rawMetadata !== 'object' || Array.isArray(rawMetadata)) {
+    if (
+      !rawMetadata ||
+      typeof rawMetadata !== 'object' ||
+      Array.isArray(rawMetadata)
+    ) {
       return {};
     }
 
-    const metadataEntries = Object.entries(rawMetadata as Record<string, unknown>)
-      .filter(([, value]) => ['string', 'number', 'boolean'].includes(typeof value))
+    const metadataEntries = Object.entries(
+      rawMetadata as Record<string, unknown>,
+    )
+      .filter(([, value]) =>
+        ['string', 'number', 'boolean'].includes(typeof value),
+      )
       .map(([key, value]) => [key, String(value)]);
 
     return Object.fromEntries(metadataEntries);
   }
 
-  private resolvePlanPrice(days: number, deviceLimit: number): number | undefined {
+  private resolvePlanPrice(
+    days: number,
+    deviceLimit: number,
+  ): number | undefined {
     const dayPrices = PLAN_PRICE_CENTS[days];
     if (!dayPrices) {
       return undefined;
@@ -590,7 +670,9 @@ export class PaymentsService {
 
     const price = dayPrices[deviceLimit];
     if (typeof price !== 'number') {
-      throw new BadRequestException('Unsupported number of devices for selected period');
+      throw new BadRequestException(
+        'Unsupported number of devices for selected period',
+      );
     }
 
     return price;

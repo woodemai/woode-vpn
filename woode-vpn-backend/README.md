@@ -1,6 +1,7 @@
 # Woode VPN Backend
 
 NestJS backend for Telegram bot or web frontend where user:
+
 - creates profile,
 - pays subscription,
 - receives one combined VLESS subscription URL built from multiple 3x-ui servers.
@@ -76,11 +77,13 @@ API base URL: `http://localhost:3000/api`
 ## Docker (Recommended for VPS)
 
 This project can run fully through Docker Compose:
+
 - PostgreSQL in a container
 - NestJS app in a container
 - Prisma migrations run automatically on app startup
 
 There are 2 compose modes:
+
 - `docker-compose.yml` - app + postgres, port `3000` exposed (good for local/dev server)
 - `docker-compose.vps.yml` - app + postgres + Caddy with automatic HTTPS on `80/443` (recommended for VPS)
 
@@ -173,10 +176,11 @@ Content-Type: application/json
 ```
 
 Response includes:
+
 - `subscriptionUrl` (single URL to give user)
 - `subscriptionText` (raw merged VLESS lines)
 
-2.1 Real YooKassa webhook
+  2.1 Real YooKassa webhook
 
 Configure YooKassa notification URL:
 
@@ -187,6 +191,7 @@ https://your-domain.com/api/payments/webhooks/yookassa
 Backend verifies payment directly via YooKassa API (`/v3/payments/{id}`) using `YOOKASSA_SHOP_ID` and `YOOKASSA_SECRET_KEY`, then issues subscription.
 
 Webhook expects `metadata` in payment object:
+
 - `userId` (required)
 - `months` (optional, default `1`)
 - `country` (optional)

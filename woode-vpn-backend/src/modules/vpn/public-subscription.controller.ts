@@ -1,5 +1,11 @@
 import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { VpnService } from './vpn.service';
 import type { Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
@@ -10,11 +16,17 @@ export class PublicSubscriptionController {
   constructor(
     private readonly vpnService: VpnService,
     private readonly configService: ConfigService,
-  ) { }
+  ) {}
 
   @Get('sub/:token')
-  @ApiOperation({ summary: 'Get plain or encoded subscription by public token' })
-  @ApiQuery({ name: 'hwid', required: false, description: 'Client hardware id' })
+  @ApiOperation({
+    summary: 'Get plain or encoded subscription by public token',
+  })
+  @ApiQuery({
+    name: 'hwid',
+    required: false,
+    description: 'Client hardware id',
+  })
   @ApiOkResponse({ description: 'Subscription payload returned' })
   @ApiBadRequestResponse({ description: 'Subscription cannot be served' })
   async getSubscription(
@@ -23,11 +35,17 @@ export class PublicSubscriptionController {
     @Req() request: Request,
     @Query('hwid') hwidFromQuery?: string,
   ) {
-    const hwidHeader = request?.headers['x-hwid'] ?? request?.headers['x-device-id'];
-    const hwidFromHeader = Array.isArray(hwidHeader) ? hwidHeader[0] : hwidHeader;
+    const hwidHeader =
+      request?.headers['x-hwid'] ?? request?.headers['x-device-id'];
+    const hwidFromHeader = Array.isArray(hwidHeader)
+      ? hwidHeader[0]
+      : hwidHeader;
     const hwid = hwidFromQuery ?? hwidFromHeader;
 
-    const payload = await this.vpnService.getSubscriptionPayloadByToken(token, hwid);
+    const payload = await this.vpnService.getSubscriptionPayloadByToken(
+      token,
+      hwid,
+    );
 
     response.setHeader('Content-Type', 'text/plain; charset=utf-8');
     response.setHeader(

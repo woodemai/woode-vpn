@@ -5,7 +5,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) { }
+  constructor(private readonly prisma: PrismaService) {}
 
   async createOrGet(input: CreateUserDto): Promise<User> {
     if (input.externalId) {
@@ -13,7 +13,10 @@ export class UsersService {
         where: { externalId: input.externalId },
       });
       if (existing) {
-        if (input.telegramName && existing.telegramName !== input.telegramName) {
+        if (
+          input.telegramName &&
+          existing.telegramName !== input.telegramName
+        ) {
           return this.prisma.user.update({
             where: { id: existing.id },
             data: { telegramName: input.telegramName },
