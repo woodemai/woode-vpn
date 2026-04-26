@@ -191,7 +191,9 @@ export class XuiService {
       let inboundChangedCount = 0;
       let targetClientId: string | undefined;
 
-      settings.clients.filter(client => client.subId === subId && client.enable !== enabled).forEach(client => {
+      const filteredClients = settings.clients.filter(client => client.subId === subId && client.enable !== enabled)
+
+      const updateClients = filteredClients.forEach(client => {
         client.enable = enabled;
         inboundChanged = true;
         inboundChangedCount += 1;
@@ -207,7 +209,7 @@ export class XuiService {
 
       const formData = new FormData();
       formData.append('id', String(inbound.id));
-      formData.append('settings', JSON.stringify({ clients: settings.clients }));
+      formData.append('settings', JSON.stringify({ clients: updateClients }));
       
       this.logger.debug(formData.get('settings')?.toString() ?? 'No settings in formData');
       try {
