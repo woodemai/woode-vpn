@@ -409,8 +409,9 @@ export class VpnService {
       ),
     );
     const expireTs = Math.floor(activeSubscription.endsAt.getTime() / 1000);
-    const usage = await this.fetchUsageTotals(token);
-    const userInfo = `upload=${usage.upload}; download=${usage.download}; total=${totalBytes}; expire=${expireTs}`;
+    const upload = Math.max(0, Number(profile.usageUploadBytes ?? 0));
+    const download = Math.max(0, Number(profile.usageDownloadBytes ?? 0));
+    const userInfo = `upload=${upload}; download=${download}; total=${totalBytes}; expire=${expireTs}`;
 
     const subscriptionConfig = await this.subscriptionConfigService.get();
     const title = subscriptionConfig.title;
@@ -543,6 +544,49 @@ export class VpnService {
     if (configsToStore.length) {
       this.setCachedSubscriptions(token, configsToStore);
     }
+
+    return 'updated';
+  }
+
+  async refreshProfileUsage(profileId: number): Promise<
+    | 'updated'
+    | 'skipped-no-token'
+    | 'skipped-no-active-subscription'
+  > {
+    const profile = await this.prisma.vpnProfile.findUnique({
+      where: { id: profileId },
+      include: { user: true },
+    });
+
+    if (!profile?.active || !profile.subscriptionToken) {
+      return 'skipped-no-token';
+    }
+
+    const activeSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId: profile.userId,
+        status: SubscriptionStatus.ACTIVE,
+        endsAt: {
+          gt: new Date(),
+        },
+      },
+      orderBy: { endsAt: 'desc' },
+    });
+
+    if (!activeSubscription) {
+      return 'skipped-no-active-subscription';
+    }
+
+    const usage = await this.fetchUsageTotals(profile.subscriptionToken);
+
+    await this.prisma.vpnProfile.update({
+      where: { id: profile.id },
+      data: {
+        usageUploadBytes: usage.upload,
+        usageDownloadBytes: usage.download,
+        usageRefreshedAt: new Date(),
+      },
+    });
 
     return 'updated';
   }
@@ -874,9 +918,7 @@ export class VpnService {
     const devicesConnected = await this.prisma.vpnHwidBinding.count({
       where: { profileId: profile.id },
     });
-
-    const usage = await this.fetchUsageTotals(profile.subscriptionToken);
-    const trafficUsedBytes = usage.upload + usage.download;
+    const trafficUsedBytes = Math.max(0, profile.usageUploadBytes) + Math.max(0, profile.usageDownloadBytes);
     const configuredTotalBytes = Math.max(
       0,
       Number(

@@ -243,9 +243,6 @@ export class XuiService {
     const subscriptionUrl = `${base}${encodeURIComponent(subscriptionToken)}`;
 
     const startedAt = Date.now();
-    this.logger.log(
-      `3x-ui subscription fetch started: server=${server.id}, url=${subscriptionUrl}`,
-    );
 
     let response;
     try {
@@ -272,10 +269,6 @@ export class XuiService {
       );
     }
 
-    this.logger.log(
-      `3x-ui subscription fetched: server=${server.id}, durationMs=${Date.now() - startedAt}, responseLength=${response.data.trim().length}`,
-    );
-
     return response.data.trim();
   }
 
@@ -299,15 +292,12 @@ export class XuiService {
           data,
           extraHeaders,
         );
-        this.logger.log(
-          `3x-ui request success: server=${server.id}, method=${method}, path=${path}, durationMs=${Date.now() - startedAt}`,
-        );
         return result;
       } catch (error) {
         lastError = error;
         const message =
           error instanceof Error ? error.message : 'unknown error';
-        this.logger.warn(
+        this.logger.error(
           `3x-ui request attempt failed: server=${server.id}, method=${method}, path=${path}, error=${message}`,
         );
       }
@@ -366,9 +356,6 @@ export class XuiService {
 
     const cookie = rawCookies.map(entry => entry.split(';')[0]).join('; ');
     this.sessionCookie.set(server.id, cookie);
-    this.logger.log(
-      `3x-ui login success: server=${server.id}, durationMs=${Date.now() - startedAt}`,
-    );
   }
 
   private async request<T>(

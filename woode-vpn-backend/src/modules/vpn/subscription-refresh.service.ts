@@ -37,6 +37,7 @@ export class SubscriptionRefreshService {
         });
 
         let updated = 0;
+        let usageUpdated = 0;
         let skippedThrottled = 0;
         let skippedNoToken = 0;
         let skippedNoActiveSubscription = 0;
@@ -44,24 +45,27 @@ export class SubscriptionRefreshService {
 
         for (const profile of profiles) {
             try {
-                const result = await this.vpnService.refreshProfileConfigs(profile.id);
-                if (result === 'updated') {
+                const configResult = await this.vpnService.refreshProfileConfigs(profile.id);
+                if (configResult === 'updated') {
                     updated += 1;
-                    continue;
                 }
 
-                if (result === 'skipped-throttled') {
+                if (configResult === 'skipped-throttled') {
                     skippedThrottled += 1;
-                    continue;
                 }
 
-                if (result === 'skipped-no-token') {
+                if (configResult === 'skipped-no-token') {
                     skippedNoToken += 1;
+                }
+
+                if (configResult === 'skipped-no-active-subscription') {
+                    skippedNoActiveSubscription += 1;
                     continue;
                 }
 
-                if (result === 'skipped-no-active-subscription') {
-                    skippedNoActiveSubscription += 1;
+                const usageResult = await this.vpnService.refreshProfileUsage(profile.id);
+                if (usageResult === 'updated') {
+                    usageUpdated += 1;
                 }
             } catch (error) {
                 errors += 1;
@@ -73,7 +77,7 @@ export class SubscriptionRefreshService {
         }
 
         this.logger.log(
-            `subscription refresh finished: total=${profiles.length}, updated=${updated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
+            `subscription refresh finished: total=${profiles.length}, configsUpdated=${updated}, usageUpdated=${usageUpdated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
         );
     }
 }

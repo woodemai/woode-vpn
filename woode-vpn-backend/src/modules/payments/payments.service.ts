@@ -166,7 +166,6 @@ export class PaymentsService {
 
     const webhookMetadata = this.extractMetadata(dto.object);
 
-    // In dev mode, skip payment verification and emulate a successful payment.
     const payment: YooKassaPayment = isDev
       ? {
         id: rawPaymentId,
