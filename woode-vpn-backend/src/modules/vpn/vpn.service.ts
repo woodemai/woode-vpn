@@ -44,6 +44,31 @@ type DeviceBindResult =
   | { status: 'created'; currentCount: number }
   | { status: 'limit_exceeded'; currentCount: number };
 
+function toNonNegativeBigInt(value: number): bigint {
+  if (!Number.isFinite(value)) {
+    return 0n;
+  }
+
+  return BigInt(Math.max(0, Math.trunc(value)));
+}
+
+function bigIntToSafeNumber(value: bigint | number | null | undefined): number {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
+  }
+
+  if (typeof value !== 'bigint') {
+    return 0;
+  }
+
+  if (value <= 0n) {
+    return 0;
+  }
+
+  const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+  return Number(value > maxSafe ? maxSafe : value);
+}
+
 const PLAN_PRICE_CENTS: Record<number, Record<number, number>> = {
   30: { 5: 10000, 10: 15000, 15: 20000 },
   90: { 5: 27000, 10: 40000, 15: 54000 },
@@ -409,8 +434,8 @@ export class VpnService {
       ),
     );
     const expireTs = Math.floor(activeSubscription.endsAt.getTime() / 1000);
-    const upload = Math.max(0, Number(profile.usageUploadBytes ?? 0));
-    const download = Math.max(0, Number(profile.usageDownloadBytes ?? 0));
+    const upload = bigIntToSafeNumber(profile.usageUploadBytes);
+    const download = bigIntToSafeNumber(profile.usageDownloadBytes);
     const userInfo = `upload=${upload}; download=${download}; total=${totalBytes}; expire=${expireTs}`;
 
     const {
@@ -583,8 +608,8 @@ export class VpnService {
     await this.prisma.vpnProfile.update({
       where: { id: profile.id },
       data: {
-        usageUploadBytes: usage.upload,
-        usageDownloadBytes: usage.download,
+        usageUploadBytes: toNonNegativeBigInt(usage.upload),
+        usageDownloadBytes: toNonNegativeBigInt(usage.download),
         usageRefreshedAt: new Date(),
       },
     });
@@ -937,8 +962,8 @@ export class VpnService {
       where: { profileId: profile.id },
     });
     const trafficUsedBytes =
-      Math.max(0, profile.usageUploadBytes) +
-      Math.max(0, profile.usageDownloadBytes);
+      bigIntToSafeNumber(profile.usageUploadBytes) +
+      bigIntToSafeNumber(profile.usageDownloadBytes);
     const configuredTotalBytes = Math.max(
       0,
       Number(

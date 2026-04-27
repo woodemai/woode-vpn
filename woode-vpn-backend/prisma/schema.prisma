@@ -53,8 +53,8 @@ model VpnProfile {
   subscriptionToken  String           @unique
   configs            Json?
   clientMappings     Json?
-  usageUploadBytes   Int              @default(0)
-  usageDownloadBytes Int              @default(0)
+  usageUploadBytes   BigInt           @default(0)
+  usageDownloadBytes BigInt           @default(0)
   usageRefreshedAt   DateTime?
   lastRefreshedAt    DateTime?
   hwidBindings       VpnHwidBinding[]
