@@ -46,6 +46,10 @@ export class HttpMetricsInterceptor implements NestInterceptor {
         const method = request.method ?? 'UNKNOWN';
         const route = this.normalizeRoute(request);
 
+        if (route === '/api') {
+            return next.handle();
+        }
+
         return next.handle().pipe(
             finalize(() => {
                 const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
