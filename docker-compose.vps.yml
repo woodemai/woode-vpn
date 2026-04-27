@@ -8,7 +8,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-woode}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-woode_password}
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-woode} -d ${POSTGRES_DB:-woode_vpn}" ]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-woode} -d ${POSTGRES_DB:-woode_vpn}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 15
@@ -40,7 +44,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: [ "CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\"" ]
+      test:
+        [
+          "CMD-SHELL",
+          'node -e "fetch(''http://127.0.0.1:3000/api'').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"',
+        ]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -76,7 +84,7 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
-      - "443:443"
+      - "8444:8444"
     volumes:
       - ./woode-vpn-backend/docker/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -88,7 +96,6 @@ volumes:
   postgres_data:
   caddy_data:
   caddy_config:
-
 
 networks:
   backend:

@@ -98,10 +98,10 @@ export class SubscriptionNotifierService {
   private resolveNotificationType(
     subscription: Pick<
       SubscriptionWithUser,
-      'endsAt' |
-      'notifiedAfterExpiration' |
-      'notified1DayBefore' |
-      'notified3DaysBefore'
+      | 'endsAt'
+      | 'notifiedAfterExpiration'
+      | 'notified1DayBefore'
+      | 'notified3DaysBefore'
     >,
     hoursRemaining: number,
     nowMs: number,

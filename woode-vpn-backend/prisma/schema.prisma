@@ -82,16 +82,16 @@ model SubscriptionConfig {
 }
 
 model XuiServer {
-  id              Int     @id @default(autoincrement())
-  host            String  @unique
-  port            Int
-  webBasePath     String
-  name            String
-  country         String
-  username        String
-  password        String
-  publicHost      String
-  enabled         Boolean @default(true)
+  id          Int     @id @default(autoincrement())
+  host        String  @unique
+  port        Int
+  webBasePath String
+  name        String
+  country     String
+  username    String
+  password    String
+  publicHost  String
+  enabled     Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

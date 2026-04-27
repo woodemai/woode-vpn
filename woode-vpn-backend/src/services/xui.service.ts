@@ -1,7 +1,6 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { XuiServer } from '@prisma/client';
+import type { XuiServer } from '@prisma/client';
 import { firstValueFrom } from 'rxjs';
 
 type HttpMethod = 'GET' | 'POST';
@@ -61,6 +60,7 @@ export type XuiInbound = {
 interface XuiClientInput {
   id: string;
   email: string;
+  flow?: string;
   subId?: string;
   expiryTime?: number;
   totalGB?: number;
@@ -74,10 +74,7 @@ export class XuiService {
   private readonly sessionCookie = new Map<number, string>();
   private readonly requestTimeoutMs: number;
 
-  constructor(
-    private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
-  ) {
+  constructor(private readonly httpService: HttpService) {
     const timeoutRaw = Number(process.env.XUI_REQUEST_TIMEOUT_MS ?? '5000');
     this.requestTimeoutMs =
       Number.isFinite(timeoutRaw) && timeoutRaw > 0 ? timeoutRaw : 10000;
@@ -131,7 +128,7 @@ export class XuiService {
         clients: [
           {
             id: client.id,
-            flow: 'xtls-rprx-vision',
+            flow: client.flow ?? '',
             email: client.email,
             limitIp: client.limitIp ?? 0,
             totalGB: client.totalGB ?? 0,

@@ -115,18 +115,13 @@ export class VpnService {
         : 10 * 60_000;
   }
 
-  async provisionForUser(
-    userId: number,
-    country?: string,
-  ): Promise<{
+  async provisionForUser(userId: number): Promise<{
     profile: VpnProfile;
     subscriptionText: string;
     subscriptionUrl: string;
   }> {
     const startedAt = Date.now();
-    this.logger.log(
-      `provisionForUser started: userId=${userId}, country=${country ?? 'all'}`,
-    );
+    this.logger.log(`provisionForUser started: userId=${userId}`);
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
@@ -163,14 +158,6 @@ export class VpnService {
     const servers = await this.prisma.xuiServer.findMany({
       where: {
         enabled: true,
-        ...(country
-          ? {
-            country: {
-              equals: country,
-              mode: 'insensitive',
-            },
-          }
-          : {}),
       },
     });
     if (!servers.length) {
@@ -220,6 +207,11 @@ export class VpnService {
         const existingClient = inbound.clientStats.find(
           client => client.subId === token,
         );
+        const inboundNetwork = this.subscriptionService.parseStreamSettings(
+          inbound.streamSettings,
+        ).network;
+        const flow =
+          (inboundNetwork ?? 'tcp') === 'tcp' ? 'xtls-rprx-vision' : '';
 
         const uuid = existingClient?.uuid ?? randomUUID();
         const email = createShortUniqueLabel(
@@ -231,6 +223,7 @@ export class VpnService {
         if (!existingClient) {
           await this.xuiService.addClient(server, inbound.id, {
             id: uuid,
+            flow,
             email,
             subId: token,
             enable: true,
@@ -499,6 +492,11 @@ export class VpnService {
         const existingClient = inbound.clientStats.find(
           stat => stat.subId === profile.subscriptionToken,
         );
+        const inboundNetwork = this.subscriptionService.parseStreamSettings(
+          inbound.streamSettings,
+        ).network;
+        const flow =
+          (inboundNetwork ?? 'tcp') === 'tcp' ? 'xtls-rprx-vision' : '';
 
         let uuid = existingClient?.uuid;
 
@@ -513,6 +511,7 @@ export class VpnService {
           try {
             await this.xuiService.addClient(server, inbound.id, {
               id: uuid,
+              flow,
               email,
               subId: profile.subscriptionToken,
               enable: true,
@@ -591,68 +590,47 @@ export class VpnService {
     const settings = this.subscriptionService.parseSettings(inbound.settings);
     const params = new URLSearchParams();
 
+    const clientFlow = settings.clients?.find(
+      client => client.id === uuid,
+    )?.flow;
+    const network = streamSettings.network ?? 'tcp';
+    const realitySettings = streamSettings.realitySettings;
+    const randomShortId = realitySettings?.shortIds?.length
+      ? realitySettings.shortIds[
+      Math.floor(Math.random() * realitySettings.shortIds.length)
+      ]
+      : '';
+    const xhttpSettings = (
+      streamSettings as unknown as {
+        xhttpSettings?: {
+          host?: string;
+          mode?: string;
+          path?: string;
+        };
+      }
+    ).xhttpSettings;
+
     params.set('encryption', settings.encryption ?? 'none');
-    params.set(
-      'flow',
-      settings.clients?.find(client => client.id === uuid)?.flow ?? '',
-    );
-    params.set(
-      'fp',
-      streamSettings.realitySettings?.settings?.fingerprint ?? '',
-    );
-    params.set(
-      'pbk',
-      streamSettings.realitySettings?.settings?.publicKey ?? '',
-    );
-    params.set('security', streamSettings.security ?? '');
-    params.set(
-      'sid',
-      streamSettings.realitySettings?.shortIds?.[
-      Math.floor(
-        Math.random() * streamSettings.realitySettings.shortIds.length,
-      )
-      ] ?? '',
-    );
-    params.set('sni', streamSettings.realitySettings?.serverNames?.[0] ?? '');
-    params.set('spx', streamSettings.realitySettings?.settings?.spiderX ?? '');
-    params.set('type', streamSettings.network ?? '');
 
-    return `${inbound.protocol}://${uuid}@${host}:${inbound.port}?${params}#${inbound.remark}`;
-  }
-
-  private async fetchUsageTotals(
-    token: string,
-  ): Promise<{ upload: number; download: number }> {
-    const servers = await this.prisma.xuiServer.findMany({
-      where: { enabled: true },
-    });
-
-    if (!servers.length) {
-      return { upload: 0, download: 0 };
+    if (network !== 'xhttp' && clientFlow) {
+      params.set('flow', clientFlow);
     }
 
-    const usagePerServer = await Promise.all(
-      servers.map(async server => {
-        try {
-          return await this.xuiService.getUsageBySubId(server, token);
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : 'unknown error';
-          this.logger.warn(
-            `usage fetch failed: server=${server.id}, token=${token}, error=${message}`,
-          );
-          return { upload: 0, download: 0 };
-        }
-      }),
-    );
+    params.set('fp', realitySettings?.settings?.fingerprint ?? '');
+    params.set('pbk', realitySettings?.settings?.publicKey ?? '');
+    params.set('security', streamSettings.security ?? '');
+    params.set('sid', randomShortId);
+    params.set('sni', realitySettings?.serverNames?.[0] ?? '');
+    params.set('spx', realitySettings?.settings?.spiderX ?? '');
+    params.set('type', network);
 
-    return usagePerServer.reduce(
-      (acc, item) => ({
-        upload: acc.upload + item.upload,
-        download: acc.download + item.download,
-      }),
-      { upload: 0, download: 0 },
-    );
+    if (network === 'xhttp') {
+      params.set('host', xhttpSettings?.host ?? '');
+      params.set('mode', xhttpSettings?.mode ?? 'auto');
+      params.set('path', xhttpSettings?.path ?? '/');
+    }
+
+    return `${inbound.protocol}://${uuid}@${host}:${inbound.port}?${params}#${inbound.remark}`;
   }
 
   async getUserProfile(userId: number): Promise<{
