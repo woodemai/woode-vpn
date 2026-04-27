@@ -7,6 +7,10 @@ export class MetricsAuthMiddleware implements NestMiddleware {
     constructor(private readonly configService: ConfigService) { }
 
     use(request: Request, response: Response, next: NextFunction): void {
+        if (request.originalUrl === '/api') {
+            next();
+            return;
+        }
         const nodeEnv = this.configService.get<string>('NODE_ENV') ?? 'development';
         if (nodeEnv !== 'production') {
             next();

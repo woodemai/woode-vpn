@@ -4,16 +4,16 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma, SubscriptionStatus, VpnProfile } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { ConfigService } from '@nestjs/config';
 import { customAlphabet } from 'nanoid';
+import { slugify } from 'transliteration';
 import { PrismaService } from '../../db/prisma.service';
 import { SubscriptionConfigService } from '../../services/subscription-config.service';
 import { SubscriptionService } from '../../services/subscription.service';
 import { TelegramNotifierService } from '../../services/telegram-notifier.service';
 import { XuiService } from '../../services/xui.service';
-import { slugify } from 'transliteration';
 
 type XuiInboundItem = Awaited<ReturnType<XuiService['getInbounds']>>[number];
 
@@ -90,8 +90,9 @@ export class VpnService {
       this.configService.get<number>('app.subscription.cacheTtlMinutes') ?? 10,
     );
     const refreshThrottleMinutes = Number(
-      this.configService.get<number>('app.subscription.refreshThrottleMinutes') ??
-      10,
+      this.configService.get<number>(
+        'app.subscription.refreshThrottleMinutes',
+      ) ?? 10,
     );
 
     this.subscriptionCacheTtlMs =
@@ -314,9 +315,9 @@ export class VpnService {
     plainSubscriptionText: string;
     userInfo: string;
     profileTitleBase64: string;
-    profileUpdateIntervalHours: number;
-    supportUrl: string;
-    profileUrl: string;
+    updateIntervalHours: number;
+    supportUrl: string | null;
+    profileUrl: string | null;
     announce: string;
   }> {
     const profile = await this.prisma.vpnProfile.findUnique({
@@ -387,8 +388,7 @@ export class VpnService {
       ? (profile.configs as string[])
       : [];
     const cachedSubscriptions = this.getCachedSubscriptions(token);
-    const effectiveSubscriptions =
-      cachedSubscriptions ?? storedSubscriptions;
+    const effectiveSubscriptions = cachedSubscriptions ?? storedSubscriptions;
 
     if (!cachedSubscriptions && storedSubscriptions.length) {
       this.setCachedSubscriptions(token, storedSubscriptions);
@@ -413,21 +413,18 @@ export class VpnService {
     const download = Math.max(0, Number(profile.usageDownloadBytes ?? 0));
     const userInfo = `upload=${upload}; download=${download}; total=${totalBytes}; expire=${expireTs}`;
 
-    const subscriptionConfig = await this.subscriptionConfigService.get();
-    const title = subscriptionConfig.title;
+    const {
+      title = '',
+      announce = '',
+      profileUrl = '',
+      supportUrl = '',
+      updateIntervalHours = 6,
+    } = await this.subscriptionConfigService.get();
     const profileTitleBase64 = Buffer.from(title, 'utf8').toString('base64');
-    const profileUpdateIntervalHours = Math.max(
-      1,
-      Number(subscriptionConfig.updateIntervalHours),
-    );
-
-    const supportUrl = subscriptionConfig.supportUrl ?? '';
-    const profileUrl = subscriptionConfig.profileUrl ?? '';
-    const announce = subscriptionConfig.announce;
 
     const metaLines = [
       `#profile-title: ${title}`,
-      `#profile-update-interval: ${profileUpdateIntervalHours}`,
+      `#profile-update-interval: ${updateIntervalHours}`,
       `#subscription-userinfo: ${userInfo}`,
       ...(supportUrl ? [`#support-url: ${supportUrl}`] : []),
       ...(profileUrl ? [`#profile-web-page-url: ${profileUrl}`] : []),
@@ -444,14 +441,16 @@ export class VpnService {
       plainSubscriptionText,
       userInfo,
       profileTitleBase64,
-      profileUpdateIntervalHours,
+      updateIntervalHours,
       supportUrl,
       profileUrl,
       announce,
     };
   }
 
-  async refreshProfileConfigs(profileId: number): Promise<
+  async refreshProfileConfigs(
+    profileId: number,
+  ): Promise<
     | 'updated'
     | 'skipped-throttled'
     | 'skipped-no-token'
@@ -505,6 +504,7 @@ export class VpnService {
       true;
 
     const nextConfigs: string[] = [];
+    let rebuiltSubscriptions: string[] = [];
 
     if (refreshFromXui) {
       const liveSubscriptions = await this.fetchLiveSubscriptions(token);
@@ -513,13 +513,14 @@ export class VpnService {
       }
     }
 
-    if (!refreshFromXui || !nextConfigs.length) {
-      const rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
+    if (syncResult.changed || !refreshFromXui || !nextConfigs.length) {
+      rebuiltSubscriptions = await this.buildSubscriptionsFromMappings(
         syncResult.mappings,
       );
-      if (rebuiltSubscriptions.length) {
-        nextConfigs.push(...rebuiltSubscriptions);
-      }
+    }
+
+    if (rebuiltSubscriptions.length) {
+      nextConfigs.push(...rebuiltSubscriptions);
     }
 
     const fallbackConfigs = Array.isArray(profile.configs)
@@ -548,10 +549,10 @@ export class VpnService {
     return 'updated';
   }
 
-  async refreshProfileUsage(profileId: number): Promise<
-    | 'updated'
-    | 'skipped-no-token'
-    | 'skipped-no-active-subscription'
+  async refreshProfileUsage(
+    profileId: number,
+  ): Promise<
+    'updated' | 'skipped-no-token' | 'skipped-no-active-subscription'
   > {
     const profile = await this.prisma.vpnProfile.findUnique({
       where: { id: profileId },
@@ -748,14 +749,31 @@ export class VpnService {
 
       for (const inbound of selectedInbounds) {
         const mappingKey = `${server.id}:${inbound.id}`;
-        if (mappingMap.has(mappingKey)) {
+        const email = `${emailPrefix}-${server.id}-${inbound.id}`;
+        const existingMapping = mappingMap.get(mappingKey);
+        const existingClient = this.parseInboundClients(inbound.settings).find(
+          client =>
+            client.subId === input.token ||
+            (existingMapping?.uuid
+              ? client.id === existingMapping.uuid
+              : false) ||
+            client.email === email,
+        );
+
+        if (existingMapping) {
+          if (!existingClient) {
+            await this.xuiService.addClient(server, inbound.id, {
+              id: existingMapping.uuid,
+              email,
+              subId: input.token,
+              enable: true,
+              limitIp: input.deviceLimit,
+            });
+            changed = true;
+          }
+
           continue;
         }
-
-        const email = `${emailPrefix}-${server.id}-${inbound.id}`;
-        const existingClient = this.parseInboundClients(inbound.settings).find(
-          client => client.subId === input.token || client.email === email,
-        );
 
         const uuid =
           typeof existingClient?.id === 'string' && existingClient.id
@@ -918,7 +936,9 @@ export class VpnService {
     const devicesConnected = await this.prisma.vpnHwidBinding.count({
       where: { profileId: profile.id },
     });
-    const trafficUsedBytes = Math.max(0, profile.usageUploadBytes) + Math.max(0, profile.usageDownloadBytes);
+    const trafficUsedBytes =
+      Math.max(0, profile.usageUploadBytes) +
+      Math.max(0, profile.usageDownloadBytes);
     const configuredTotalBytes = Math.max(
       0,
       Number(
@@ -1141,9 +1161,9 @@ export class VpnService {
     plainSubscriptionText: string;
     userInfo: string;
     profileTitleBase64: string;
-    profileUpdateIntervalHours: number;
-    supportUrl: string;
-    profileUrl: string;
+    updateIntervalHours: number;
+    supportUrl: string | null;
+    profileUrl: string | null;
     announce: string;
   }> {
     const subscriptionConfig = await this.subscriptionConfigService.get();
@@ -1186,7 +1206,7 @@ export class VpnService {
       plainSubscriptionText,
       userInfo,
       profileTitleBase64,
-      profileUpdateIntervalHours,
+      updateIntervalHours: profileUpdateIntervalHours,
       supportUrl,
       profileUrl,
       announce,
