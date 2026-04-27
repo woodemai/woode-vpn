@@ -13,7 +13,7 @@ export class SubscriptionRefreshService {
         private readonly vpnService: VpnService,
     ) { }
 
-    @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
+    @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Europe/Moscow' })
     async refreshSubscriptions(): Promise<void> {
         const startedAt = Date.now();
 
@@ -31,13 +31,12 @@ export class SubscriptionRefreshService {
                     },
                 },
             },
-            select: {
-                id: true,
+            include: {
+                user: true,
             },
         });
 
         let updated = 0;
-        let usageUpdated = 0;
         let skippedThrottled = 0;
         let skippedNoToken = 0;
         let skippedNoActiveSubscription = 0;
@@ -45,7 +44,8 @@ export class SubscriptionRefreshService {
 
         for (const profile of profiles) {
             try {
-                const configResult = await this.vpnService.refreshProfileConfigs(profile.id);
+                const configResult =
+                    await this.vpnService.refreshProfileConfigs(profile);
                 if (configResult === 'updated') {
                     updated += 1;
                 }
@@ -62,14 +62,10 @@ export class SubscriptionRefreshService {
                     skippedNoActiveSubscription += 1;
                     continue;
                 }
-
-                const usageResult = await this.vpnService.refreshProfileUsage(profile.id);
-                if (usageResult === 'updated') {
-                    usageUpdated += 1;
-                }
             } catch (error) {
                 errors += 1;
-                const message = error instanceof Error ? error.message : 'unknown error';
+                const message =
+                    error instanceof Error ? error.message : 'unknown error';
                 this.logger.warn(
                     `subscription refresh failed: profileId=${profile.id}, error=${message}`,
                 );
@@ -77,7 +73,7 @@ export class SubscriptionRefreshService {
         }
 
         this.logger.log(
-            `subscription refresh finished: total=${profiles.length}, configsUpdated=${updated}, usageUpdated=${usageUpdated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
+            `subscription refresh finished: total=${profiles.length}, configsUpdated=${updated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
         );
     }
 }

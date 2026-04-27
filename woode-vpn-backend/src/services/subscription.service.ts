@@ -3,18 +3,51 @@ import { Injectable } from '@nestjs/common';
 interface StreamSettings {
   network?: string;
   security?: string;
-  tlsSettings?: {
-    serverName?: string;
-    fingerprint?: string;
-  };
+  externalProxy?: unknown[];
   realitySettings?: {
-    serverName?: string;
-    fingerprint?: string;
-    publicKey?: string;
+    show: false;
+    xver: 0;
+    target: string;
+    serverNames: string[];
+    privateKey: string;
+    minClientVer: string;
+    maxClientVer: string;
+    maxTimediff: number;
     shortIds?: string[];
-    spiderX?: string;
+    mldsa65Seed?: string;
+    settings?: {
+      publicKey?: string;
+      fingerprint?: string;
+      serverName?: string;
+      spiderX?: string;
+      mldsa65Verify?: string;
+    };
   };
+  tcpSettings?: { acceptProxyProtocol: boolean; header: { type: string } };
 }
+
+type InboundSettingsClient = {
+  comment: string;
+  created_at: number;
+  email: string;
+  enable: boolean;
+  expiryTime: number;
+  flow: string;
+  id: string;
+  limitIp: number;
+  reset: number;
+  subId: string;
+  tgId: number;
+  totalGB: number;
+  updated_at: number;
+};
+
+type InboundSettings = {
+  clients?: InboundSettingsClient[];
+  decryption?: string;
+  encryption?: string;
+  testseed?: number[];
+};
 
 @Injectable()
 export class SubscriptionService {
@@ -48,63 +81,29 @@ export class SubscriptionService {
     );
   }
 
-  buildConfig(input: {
-    uuid: string;
-    host: string;
-    port: number;
-    inboundRemark: string;
-    country: string;
-    streamSettingsRaw?: string;
-  }): string {
-    const streamSettings = this.parseStreamSettings(input.streamSettingsRaw);
-
-    const params = new URLSearchParams();
-    const network = streamSettings.network ?? 'tcp';
-    const security = streamSettings.security ?? 'none';
-
-    params.set('encryption', 'none');
-    params.set('type', network);
-    params.set('security', security);
-
-    if (streamSettings.tlsSettings?.serverName) {
-      params.set('sni', streamSettings.tlsSettings.serverName);
-    }
-
-    if (streamSettings.realitySettings?.serverName) {
-      params.set('sni', streamSettings.realitySettings.serverName);
-    }
-
-    if (streamSettings.realitySettings?.fingerprint) {
-      params.set('fp', streamSettings.realitySettings.fingerprint);
-    }
-
-    if (streamSettings.realitySettings?.publicKey) {
-      params.set('pbk', streamSettings.realitySettings.publicKey);
-    }
-
-    if (streamSettings.realitySettings?.shortIds?.length) {
-      params.set('sid', streamSettings.realitySettings.shortIds[0]);
-    }
-
-    if (streamSettings.realitySettings?.spiderX) {
-      params.set('spx', streamSettings.realitySettings.spiderX);
-    }
-
-    const label = `${input.country}-${input.inboundRemark}`;
-    return `vless://${input.uuid}@${input.host}:${input.port}?${params.toString()}#${encodeURIComponent(label)}`;
-  }
-
   merge(configs: string[]): string {
     return configs.filter(Boolean).join('\n');
   }
 
-  private parseStreamSettings(raw?: string): StreamSettings {
+  parseStreamSettings(raw?: string): StreamSettings {
     if (!raw) {
       return {};
     }
 
     try {
       return JSON.parse(raw) as StreamSettings;
+    } catch {
+      return {};
+    }
+  }
+
+  parseSettings(raw?: string): InboundSettings {
+    if (!raw) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(raw) as InboundSettings;
     } catch {
       return {};
     }

@@ -7,23 +7,11 @@ export default registerAs('app', () => ({
     apiKey: process.env.ADMIN_API_KEY ?? '',
   },
   telegram: {
-    notificationsEnabled:
-      String(
-        process.env.TELEGRAM_NOTIFICATIONS_ENABLED ?? 'false',
-      ).toLowerCase() === 'true',
     botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',
     logoPath: process.env.TELEGRAM_LOGO_PATH ?? '/app/logo.jpg',
   },
   subscription: {
     totalBytes: Number(process.env.SUBSCRIPTION_TOTAL_BYTES ?? 0),
-    plainResponse:
-      String(
-        process.env.SUBSCRIPTION_PLAIN_RESPONSE ?? 'true',
-      ).toLowerCase() === 'true',
-    refreshFromXui:
-      String(
-        process.env.SUBSCRIPTION_REFRESH_FROM_XUI ?? 'true',
-      ).toLowerCase() === 'true',
     cacheTtlMinutes: Number(
       process.env.SUBSCRIPTION_CONFIG_CACHE_TTL_MINUTES ?? 10,
     ),

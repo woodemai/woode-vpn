@@ -69,11 +69,6 @@ export class PublicSubscriptionController {
       response.setHeader('Profile-Web-Page-URL', payload.profileUrl);
     }
 
-    const plainResponse =
-      this.configService.get<boolean>('app.subscription.plainResponse') ?? true;
-
-    return plainResponse
-      ? payload.plainSubscriptionText
-      : payload.subscriptionText;
+    return payload.plainSubscriptionText;
   }
 }

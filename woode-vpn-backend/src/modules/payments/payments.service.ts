@@ -1,7 +1,7 @@
 import {
   BadRequestException,
-  InternalServerErrorException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -9,11 +9,11 @@ import { ConfigService } from '@nestjs/config';
 import { SubscriptionStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../db/prisma.service';
-import { VpnService } from '../vpn/vpn.service';
-import { TelegramNotifierService } from '../../services/telegram-notifier.service';
 import { SubscriptionNotifierService } from '../../services/subscription-notifier.service';
-import { CreatePaymentDto } from './dto/create-payment.dto';
+import { TelegramNotifierService } from '../../services/telegram-notifier.service';
+import { VpnService } from '../vpn/vpn.service';
 import { ConfirmPaymentDto } from './dto/confirm-payment.dto';
+import { CreatePaymentDto } from './dto/create-payment.dto';
 import { YooKassaWebhookDto } from './dto/yookassa-webhook.dto';
 
 interface YooKassaPayment {
@@ -106,27 +106,13 @@ export class PaymentsService {
       throw new BadRequestException('Amount is required for the selected plan');
     }
 
-    const payment =
-      process.env.IS_DEV === 'true'
-        ? {
-          id: `dev-${randomUUID()}`,
-          confirmation: {
-            type: 'redirect',
-            confirmation_url: this.buildDevPaymentUrl(
-              dto.userId,
-              days,
-              deviceLimit,
-              amountCents,
-            ),
-          },
-        }
-        : await this.createYooKassaPaymentIntent({
-          userId: user.id,
-          days,
-          deviceLimit,
-          amountCents,
-          returnUrl: dto.returnUrl,
-        });
+    const payment = await this.createYooKassaPaymentIntent({
+      userId: user.id,
+      days,
+      deviceLimit,
+      amountCents,
+      returnUrl: dto.returnUrl,
+    });
 
     const confirmationUrl = payment.confirmation?.confirmation_url;
     if (!confirmationUrl) {
@@ -151,7 +137,6 @@ export class PaymentsService {
 
   async handleYooKassaWebhook(dto: YooKassaWebhookDto) {
     const startedAt = Date.now();
-    const isDev = process.env.IS_DEV === 'true';
 
     if (dto.event !== 'payment.succeeded') {
       return { ok: true, ignored: true };
@@ -164,17 +149,8 @@ export class PaymentsService {
       );
     }
 
-    const webhookMetadata = this.extractMetadata(dto.object);
-
-    const payment: YooKassaPayment = isDev
-      ? {
-        id: rawPaymentId,
-        status: 'succeeded',
-        paid: true,
-        amount: { value: '100' },
-        metadata: webhookMetadata,
-      }
-      : await this.verifyYooKassaPayment(rawPaymentId);
+    const payment: YooKassaPayment =
+      await this.verifyYooKassaPayment(rawPaymentId);
 
     const metadata = payment.metadata ?? {};
 
@@ -214,7 +190,7 @@ export class PaymentsService {
     });
 
     this.logger.log(
-      `Webhook processed: paymentId=${payment.id}, userId=${userId}, days=${days}, isDev=${isDev}, durationMs=${Date.now() - startedAt}`,
+      `Webhook processed: paymentId=${payment.id}, userId=${userId}, days=${days}, durationMs=${Date.now() - startedAt}`,
     );
 
     return {
@@ -225,23 +201,28 @@ export class PaymentsService {
     };
   }
 
-  async confirmPayment(dto: ConfirmPaymentDto) {
+  async confirmPayment({
+    paymentId,
+    userId,
+    days = 30,
+    deviceLimit = 5,
+    amountCents,
+  }: ConfirmPaymentDto) {
     const startedAt = Date.now();
-    const isDev = process.env.IS_DEV === 'true';
 
     this.logger.log(
-      `confirmPayment started: userId=${dto.userId}, days=${dto.days ?? 'n/a'}, deviceLimit=${dto.deviceLimit ?? 'n/a'}, paymentId=${dto.paymentId ?? 'n/a'}, isDev=${isDev}`,
+      `confirmPayment started: userId=${userId}, days=${days ?? 'n/a'}, deviceLimit=${deviceLimit ?? 'n/a'}, paymentId=${paymentId ?? 'n/a'}`,
     );
 
-    if (dto.paymentId) {
+    if (paymentId) {
       const existing = await this.prisma.subscription.findFirst({
-        where: { paymentId: dto.paymentId },
+        where: { paymentId: paymentId },
       });
 
       if (existing) {
         const profile = await this.vpnService.getUserProfile(existing.userId);
         this.logger.log(
-          `confirmPayment idempotent hit: paymentId=${dto.paymentId}, userId=${existing.userId}, durationMs=${Date.now() - startedAt}`,
+          `confirmPayment idempotent hit: paymentId=${paymentId}, userId=${existing.userId}, durationMs=${Date.now() - startedAt}`,
         );
 
         return {
@@ -254,31 +235,29 @@ export class PaymentsService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { id: dto.userId },
+      where: { id: userId },
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
     const now = new Date();
-    const days = dto.days ?? 30;
-    const deviceLimit = dto.deviceLimit ?? 5;
 
     const expectedAmountCents = this.resolvePlanPrice(days, deviceLimit);
     if (
       typeof expectedAmountCents === 'number' &&
-      typeof dto.amountCents === 'number' &&
-      dto.amountCents !== expectedAmountCents
+      typeof amountCents === 'number' &&
+      amountCents !== expectedAmountCents
     ) {
       throw new BadRequestException(
-        `Invalid amount for selected plan: expected ${expectedAmountCents}, got ${dto.amountCents}`,
+        `Invalid amount for selected plan: expected ${expectedAmountCents}, got ${amountCents}`,
       );
     }
 
-    const amountCents =
+    const finalAmountCents =
       typeof expectedAmountCents === 'number'
         ? expectedAmountCents
-        : dto.amountCents;
+        : amountCents;
 
     const latestSubscription = await this.prisma.subscription.findFirst({
       where: { userId: user.id, status: SubscriptionStatus.ACTIVE },
@@ -303,17 +282,16 @@ export class PaymentsService {
         status: SubscriptionStatus.ACTIVE,
         startsAt,
         endsAt,
-        paymentId: dto.paymentId ?? (isDev ? `dev-${Date.now()}` : undefined),
-        amountCents,
+        paymentId,
+        amountCents: finalAmountCents,
       },
     });
 
-    // Reset notification flags for the new subscription
     await this.subscriptionNotifierService.resetNotificationFlags(
       newSubscription.id,
     );
 
-    const profileSnapshot = dto.paymentId
+    const profileSnapshot = paymentId
       ? await this.vpnService.getUserProfile(user.id).catch(() => undefined)
       : undefined;
 
@@ -329,7 +307,7 @@ export class PaymentsService {
       );
     }
 
-    if (dto.paymentId && user.externalId) {
+    if (paymentId && user.externalId) {
       const chatId = user.externalId;
       const logoPath =
         this.configService.get<string>('app.telegram.logoPath') ??
@@ -441,22 +419,6 @@ export class PaymentsService {
     return (await response.json()) as YooKassaCreatedPayment;
   }
 
-  private buildDevPaymentUrl(
-    userId: number,
-    days: number,
-    deviceLimit: number,
-    amountCents: number,
-  ): string {
-    const params = new URLSearchParams({
-      userId: String(userId),
-      days: String(days),
-      deviceLimit: String(deviceLimit),
-      amountCents: String(amountCents),
-    });
-
-    return `${process.env.APP_PUBLIC_BASE_URL ?? 'https://example.com'}/payments/dev?${params.toString()}`;
-  }
-
   private buildSubscriptionReplyMarkup(): Record<string, unknown> {
     return {
       inline_keyboard: [
@@ -498,10 +460,7 @@ export class PaymentsService {
     ];
 
     if (!input.subscriptionUrl) {
-      return [
-        ...baseParts,
-        'Ссылка готовится.',
-      ].join('\n');
+      return [...baseParts, 'Ссылка готовится.'].join('\n');
     }
 
     return [
@@ -634,28 +593,6 @@ export class PaymentsService {
     return Math.round(parsed * 100);
   }
 
-  private extractMetadata(
-    rawObject: Record<string, unknown>,
-  ): Record<string, string> {
-    const rawMetadata = rawObject.metadata;
-    if (
-      !rawMetadata ||
-      typeof rawMetadata !== 'object' ||
-      Array.isArray(rawMetadata)
-    ) {
-      return {};
-    }
-
-    const metadataEntries = Object.entries(
-      rawMetadata as Record<string, unknown>,
-    )
-      .filter(([, value]) =>
-        ['string', 'number', 'boolean'].includes(typeof value),
-      )
-      .map(([key, value]) => [key, String(value)]);
-
-    return Object.fromEntries(metadataEntries);
-  }
 
   private resolvePlanPrice(
     days: number,

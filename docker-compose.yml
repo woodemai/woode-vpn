@@ -35,20 +35,8 @@ services:
       APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
       METRICS_API_KEY: ${METRICS_API_KEY:-}
-      IS_DEV: ${IS_DEV:-false}
-      XUI_REQUEST_TIMEOUT_MS: ${XUI_REQUEST_TIMEOUT_MS:-5000}
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-123456}
       YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-test_xxx_or_live_xxx}
-      XUI_SERVERS_JSON: ${XUI_SERVERS_JSON:-[{"id":"de-1","country":"DE","baseUrl":"https://de-panel.example.com","username":"admin","password":"password","publicHost":"de-vpn.example.com","inboundIds":[1],"enabled":true},{"id":"nl-1","country":"NL","baseUrl":"https://nl-panel.example.com","username":"admin","password":"password","publicHost":"nl-vpn.example.com","inboundIds":[2],"enabled":true}]}
-      SUBSCRIPTION_PLAIN_RESPONSE: ${SUBSCRIPTION_PLAIN_RESPONSE:-true}
-      SUBSCRIPTION_TITLE: ${SUBSCRIPTION_TITLE:-Woode VPN}
-      SUBSCRIPTION_SUPPORT_URL: ${SUBSCRIPTION_SUPPORT_URL:-}
-      SUBSCRIPTION_PROFILE_URL: ${SUBSCRIPTION_PROFILE_URL:-}
-      SUBSCRIPTION_ANNOUNCE: ${SUBSCRIPTION_ANNOUNCE:-}
-      SUBSCRIPTION_UPDATE_INTERVAL_HOURS: ${SUBSCRIPTION_UPDATE_INTERVAL_HOURS:-1}
-      SUBSCRIPTION_TOTAL_BYTES: ${SUBSCRIPTION_TOTAL_BYTES:-0}
-      SUBSCRIPTION_REFRESH_FROM_XUI: ${SUBSCRIPTION_REFRESH_FROM_XUI:-true}
-      TELEGRAM_NOTIFICATIONS_ENABLED: ${TELEGRAM_NOTIFICATIONS_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       postgres:
@@ -73,10 +61,6 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://app:3000}
-      BACKEND_REQUEST_TIMEOUT_MS: ${BACKEND_REQUEST_TIMEOUT_MS:-10000}
-      TELEGRAM_HANDLER_TIMEOUT_MS: ${TELEGRAM_HANDLER_TIMEOUT_MS:-30000}
-      BUY_DEFAULT_MONTHS: ${BUY_DEFAULT_MONTHS:-1}
-      BUY_DEFAULT_COUNTRY: ${BUY_DEFAULT_COUNTRY:-NL}
       TZ: Europe/Moscow
       NODE_ENV: production
     depends_on:
