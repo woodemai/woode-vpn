@@ -39,28 +39,6 @@ PORT=3000
 APP_PUBLIC_BASE_URL="http://localhost:3000"
 YOOKASSA_SHOP_ID="123456"
 YOOKASSA_SECRET_KEY="live_xxx_or_test_xxx"
-XUI_SERVERS_JSON='[
-  {
-    "id": "de-1",
-    "country": "DE",
-    "baseUrl": "https://de-panel.example.com",
-    "username": "admin",
-    "password": "password",
-    "publicHost": "de-vpn.example.com",
-    "inboundIds": [1],
-    "enabled": true
-  },
-  {
-    "id": "nl-1",
-    "country": "NL",
-    "baseUrl": "https://nl-panel.example.com",
-    "username": "admin",
-    "password": "password",
-    "publicHost": "nl-vpn.example.com",
-    "inboundIds": [2],
-    "enabled": true
-  }
-]'
 ```
 
 ## Install and Run
@@ -93,7 +71,7 @@ There are 2 compose modes:
 cp .env.docker.example .env.docker
 ```
 
-Fill real values in `.env.docker` (`YOOKASSA_*`, `XUI_SERVERS_JSON`, passwords).
+Fill real values in `.env.docker` (`YOOKASSA_*`, passwords).
 
 ### 2. Start services
 

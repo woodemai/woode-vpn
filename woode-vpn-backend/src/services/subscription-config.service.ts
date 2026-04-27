@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { SubscriptionConfig } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
 
@@ -15,10 +14,7 @@ export interface UpdateSubscriptionConfigInput {
 export class SubscriptionConfigService {
   private cachedConfig?: SubscriptionConfig;
 
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   async get(): Promise<SubscriptionConfig> {
     if (this.cachedConfig) {
@@ -27,7 +23,13 @@ export class SubscriptionConfigService {
 
     const config = await this.prisma.subscriptionConfig.upsert({
       where: { id: 1 },
-      create: this.getDefaultConfig(),
+      create: {
+        title: 'Woode VPN',
+        supportUrl: 'https://t.me/woodemai',
+        profileUrl: null,
+        announce: '',
+        updateIntervalHours: 6,
+      },
       update: {},
     });
 
@@ -38,54 +40,23 @@ export class SubscriptionConfigService {
   async update(
     data: UpdateSubscriptionConfigInput,
   ): Promise<SubscriptionConfig> {
-    const current = await this.get();
+    await this.get();
     const normalized = this.normalizeInput(data);
 
-    const updated = await this.prisma.subscriptionConfig.upsert({
+    const updated = await this.prisma.subscriptionConfig.update({
       where: { id: 1 },
-      create: {
-        ...this.getDefaultConfig(),
-        ...normalized,
-      },
-      update: {
-        title: normalized.title ?? current.title,
-        supportUrl:
-          normalized.supportUrl === undefined
-            ? current.supportUrl
-            : normalized.supportUrl,
-        profileUrl:
-          normalized.profileUrl === undefined
-            ? current.profileUrl
-            : normalized.profileUrl,
-        announce: normalized.announce ?? current.announce,
-        updateIntervalHours:
-          normalized.updateIntervalHours ?? current.updateIntervalHours,
-      },
+      data: normalized,
     });
 
     this.cachedConfig = updated;
     return updated;
   }
 
-  private getDefaultConfig(): Omit<SubscriptionConfig, 'updatedAt'> {
-    return {
-      id: 1,
-      title: process.env.SUBSCRIPTION_TITLE ?? 'Woode VPN',
-      supportUrl: process.env.SUBSCRIPTION_SUPPORT_URL ?? null,
-      profileUrl: process.env.SUBSCRIPTION_PROFILE_URL ?? null,
-      announce: process.env.SUBSCRIPTION_ANNOUNCE ?? '',
-      updateIntervalHours: Math.max(
-        1,
-        Number(process.env.SUBSCRIPTION_UPDATE_INTERVAL_HOURS ?? 12),
-      ),
-    };
-  }
-
   private normalizeInput(
     data: UpdateSubscriptionConfigInput,
   ): UpdateSubscriptionConfigInput {
     return {
-      title: data.title?.trim(),
+      title: data.title === undefined ? undefined : data.title.trim(),
       supportUrl:
         data.supportUrl === undefined
           ? undefined
@@ -94,7 +65,7 @@ export class SubscriptionConfigService {
         data.profileUrl === undefined
           ? undefined
           : data.profileUrl?.trim() || null,
-      announce: data.announce?.trim(),
+      announce: data.announce === undefined ? undefined : data.announce.trim(),
       updateIntervalHours:
         data.updateIntervalHours === undefined
           ? undefined

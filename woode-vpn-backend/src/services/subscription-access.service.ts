@@ -76,7 +76,7 @@ export class SubscriptionAccessService {
           continue;
         }
 
-        const servers = this.xuiService.getServers();
+        const servers = await this.prisma.xuiServer.findMany();
         let disabledTotal = 0;
 
         for (const server of servers) {

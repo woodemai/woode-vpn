@@ -1,4 +1,5 @@
 import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   ApiBadRequestResponse,
   ApiOkResponse,
@@ -6,9 +7,8 @@ import {
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
-import { VpnService } from './vpn.service';
 import type { Request, Response } from 'express';
-import { ConfigService } from '@nestjs/config';
+import { VpnService } from './vpn.service';
 
 @ApiTags('Public Subscription')
 @Controller()
@@ -16,7 +16,7 @@ export class PublicSubscriptionController {
   constructor(
     private readonly vpnService: VpnService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   @Get('sub/:token')
   @ApiOperation({
@@ -59,7 +59,7 @@ export class PublicSubscriptionController {
     response.setHeader('Profile-Title', payload.profileTitleBase64);
     response.setHeader(
       'Profile-Update-Interval',
-      String(payload.profileUpdateIntervalHours),
+      String(payload.updateIntervalHours),
     );
 
     if (payload.supportUrl) {
@@ -69,11 +69,6 @@ export class PublicSubscriptionController {
       response.setHeader('Profile-Web-Page-URL', payload.profileUrl);
     }
 
-    const plainResponse =
-      this.configService.get<boolean>('app.subscription.plainResponse') ?? true;
-
-    return plainResponse
-      ? payload.plainSubscriptionText
-      : payload.subscriptionText;
+    return payload.plainSubscriptionText;
   }
 }

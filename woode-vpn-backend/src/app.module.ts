@@ -29,4 +29,4 @@ import { MonitoringModule } from './monitoring/monitoring.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

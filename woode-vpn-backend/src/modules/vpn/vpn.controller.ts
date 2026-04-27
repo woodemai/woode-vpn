@@ -10,7 +10,7 @@ import { VpnService } from './vpn.service';
 @ApiTags('VPN')
 @Controller('vpn')
 export class VpnController {
-  constructor(private readonly vpnService: VpnService) {}
+  constructor(private readonly vpnService: VpnService) { }
 
   @Get('users/:userId/profile')
   @ApiOperation({ summary: 'Get VPN profile information for user' })

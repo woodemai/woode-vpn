@@ -12,7 +12,7 @@ import { UsersService } from './users.service';
 @ApiTags('Users')
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
   @Post('register')
   @ApiOperation({ summary: 'Register user or return existing user' })
@@ -26,7 +26,6 @@ export class UsersController {
       userId: user.id,
       externalId: user.externalId,
       telegramName: user.telegramName,
-      email: user.email,
       createdAt: user.createdAt,
     };
   }

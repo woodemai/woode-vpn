@@ -13,7 +13,7 @@ export class SubscriptionRefreshService {
         private readonly vpnService: VpnService,
     ) { }
 
-    @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
+    @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Europe/Moscow' })
     async refreshSubscriptions(): Promise<void> {
         const startedAt = Date.now();
 
@@ -31,8 +31,8 @@ export class SubscriptionRefreshService {
                     },
                 },
             },
-            select: {
-                id: true,
+            include: {
+                user: true,
             },
         });
 
@@ -44,28 +44,28 @@ export class SubscriptionRefreshService {
 
         for (const profile of profiles) {
             try {
-                const result = await this.vpnService.refreshProfileConfigs(profile.id);
-                if (result === 'updated') {
+                const configResult =
+                    await this.vpnService.refreshProfileConfigs(profile);
+                if (configResult === 'updated') {
                     updated += 1;
-                    continue;
                 }
 
-                if (result === 'skipped-throttled') {
+                if (configResult === 'skipped-throttled') {
                     skippedThrottled += 1;
-                    continue;
                 }
 
-                if (result === 'skipped-no-token') {
+                if (configResult === 'skipped-no-token') {
                     skippedNoToken += 1;
-                    continue;
                 }
 
-                if (result === 'skipped-no-active-subscription') {
+                if (configResult === 'skipped-no-active-subscription') {
                     skippedNoActiveSubscription += 1;
+                    continue;
                 }
             } catch (error) {
                 errors += 1;
-                const message = error instanceof Error ? error.message : 'unknown error';
+                const message =
+                    error instanceof Error ? error.message : 'unknown error';
                 this.logger.warn(
                     `subscription refresh failed: profileId=${profile.id}, error=${message}`,
                 );
@@ -73,7 +73,7 @@ export class SubscriptionRefreshService {
         }
 
         this.logger.log(
-            `subscription refresh finished: total=${profiles.length}, updated=${updated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
+            `subscription refresh finished: total=${profiles.length}, configsUpdated=${updated}, skippedThrottled=${skippedThrottled}, skippedNoToken=${skippedNoToken}, skippedNoActiveSubscription=${skippedNoActiveSubscription}, errors=${errors}, durationMs=${Date.now() - startedAt}`,
         );
     }
 }

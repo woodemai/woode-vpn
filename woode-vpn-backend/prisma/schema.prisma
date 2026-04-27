@@ -15,9 +15,8 @@ enum SubscriptionStatus {
 
 model User {
   id            Int            @id @default(autoincrement())
-  externalId    String?        @unique
-  telegramName  String?
-  email         String?        @unique
+  externalId    String         @unique @default(cuid())
+  telegramName  String         @default(cuid())
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   subscriptions Subscription[]
@@ -47,17 +46,18 @@ model Subscription {
 }
 
 model VpnProfile {
-  id                Int              @id @default(autoincrement())
-  userId            Int              @unique
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptionToken String           @unique
-  configs           Json?
-  clientMappings    Json?
-  lastRefreshedAt   DateTime?
-  hwidBindings      VpnHwidBinding[]
-  active            Boolean          @default(true)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                 Int              @id @default(autoincrement())
+  userId             Int              @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionToken  String           @unique
+  configs            Json?
+  usageUploadBytes   BigInt           @default(0)
+  usageDownloadBytes BigInt           @default(0)
+  lastRefreshedAt    DateTime?
+  hwidBindings       VpnHwidBinding[]
+  active             Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 }
 
 model VpnHwidBinding {
@@ -79,4 +79,20 @@ model SubscriptionConfig {
   announce            String
   updateIntervalHours Int
   updatedAt           DateTime @updatedAt
+}
+
+model XuiServer {
+  id          Int     @id @default(autoincrement())
+  host        String  @unique
+  port        Int
+  webBasePath String
+  name        String
+  country     String
+  username    String
+  password    String
+  publicHost  String
+  enabled     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

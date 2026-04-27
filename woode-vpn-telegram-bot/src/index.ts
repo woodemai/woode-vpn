@@ -15,8 +15,8 @@ if (!backendBaseUrl) {
   throw new Error('BACKEND_BASE_URL is required');
 }
 
-const backendRequestTimeoutMs = Number(process.env.BACKEND_REQUEST_TIMEOUT_MS ?? '10000');
-const handlerTimeoutMs = Number(process.env.TELEGRAM_HANDLER_TIMEOUT_MS ?? '30000');
+const backendRequestTimeoutMs = 3000;
+const handlerTimeoutMs = 30000;
 
 const backend = new BackendClient({
   baseUrl: backendBaseUrl,

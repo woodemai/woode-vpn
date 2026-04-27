@@ -22,7 +22,7 @@ export class SubscriptionNotifierService {
 
   @Cron(CronExpression.EVERY_HOUR, { timeZone: 'Europe/Moscow' })
   async checkAndNotifyExpiredSubscriptions(): Promise<void> {
-    this.logger.debug('Starting subscription expiration check...');
+    this.logger.log('Starting subscription expiration check...');
 
     try {
       const threeDaysUpper = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -85,7 +85,7 @@ export class SubscriptionNotifierService {
         );
       }
 
-      this.logger.debug('Subscription expiration check completed');
+      this.logger.log('Subscription expiration check completed');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'unknown error';
       this.logger.error(
@@ -98,10 +98,10 @@ export class SubscriptionNotifierService {
   private resolveNotificationType(
     subscription: Pick<
       SubscriptionWithUser,
-      'endsAt' |
-      'notifiedAfterExpiration' |
-      'notified1DayBefore' |
-      'notified3DaysBefore'
+      | 'endsAt'
+      | 'notifiedAfterExpiration'
+      | 'notified1DayBefore'
+      | 'notified3DaysBefore'
     >,
     hoursRemaining: number,
     nowMs: number,

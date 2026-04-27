@@ -7,20 +7,17 @@ import { basename } from 'path';
 export class TelegramNotifierService {
   private readonly logger = new Logger(TelegramNotifierService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async sendToChat(
     chatId: string,
     text: string,
-    options?: { parseMode?: 'HTML'; disableWebPagePreview?: boolean, replyMarkup?: Record<string, unknown>   },
+    options?: {
+      parseMode?: 'HTML';
+      disableWebPagePreview?: boolean;
+      replyMarkup?: Record<string, unknown>;
+    },
   ): Promise<boolean> {
-    const notificationsEnabled =
-      this.configService.get<boolean>('app.telegram.notificationsEnabled') ??
-      false;
-    if (!notificationsEnabled) {
-      return false;
-    }
-
     const botToken =
       this.configService.get<string>('app.telegram.botToken') ?? '';
     if (!botToken) {
@@ -75,13 +72,6 @@ export class TelegramNotifierService {
       replyMarkup?: Record<string, unknown>;
     },
   ): Promise<boolean> {
-    const notificationsEnabled =
-      this.configService.get<boolean>('app.telegram.notificationsEnabled') ??
-      false;
-    if (!notificationsEnabled) {
-      return false;
-    }
-
     const botToken =
       this.configService.get<string>('app.telegram.botToken') ?? '';
     if (!botToken) {
