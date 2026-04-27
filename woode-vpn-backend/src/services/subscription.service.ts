@@ -4,6 +4,30 @@ interface StreamSettings {
   network?: string;
   security?: string;
   externalProxy?: unknown[];
+  xhttpSettings?: {
+    path?: string;
+    host?: string;
+    headers?: Record<string, string>;
+    scMaxBufferedPosts?: number;
+    scMaxEachPostBytes?: string;
+    scStreamUpServerSecs?: string;
+    noSSEHeader?: boolean;
+    xPaddingBytes?: string;
+    mode?: string;
+    xPaddingObfsMode?: boolean;
+    xPaddingKey?: string;
+    xPaddingHeader?: string;
+    xPaddingPlacement?: string;
+    xPaddingMethod?: string;
+    uplinkHTTPMethod?: string;
+    sessionPlacement?: string;
+    sessionKey?: string;
+    seqPlacement?: string;
+    seqKey?: string;
+    uplinkDataPlacement?: string;
+    uplinkDataKey?: string;
+    uplinkChunkSize?: number;
+  };
   realitySettings?: {
     show: false;
     xver: 0;

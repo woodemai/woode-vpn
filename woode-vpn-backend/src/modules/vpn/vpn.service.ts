@@ -207,9 +207,12 @@ export class VpnService {
         const existingClient = inbound.clientStats.find(
           client => client.subId === token,
         );
-        const inboundNetwork = this.subscriptionService.parseStreamSettings(
-          inbound.streamSettings,
-        ).network;
+        const parsedStreamSettings =
+          this.subscriptionService.parseStreamSettings(inbound.streamSettings);
+        const parsedSettings = this.subscriptionService.parseSettings(
+          inbound.settings,
+        );
+        const inboundNetwork = parsedStreamSettings.network;
         const flow =
           (inboundNetwork ?? 'tcp') === 'tcp' ? 'xtls-rprx-vision' : '';
 
@@ -231,7 +234,13 @@ export class VpnService {
           });
         }
 
-        const config = this.buildConfig(inbound, uuid, server.host);
+        const config = this.buildConfig(
+          inbound,
+          uuid,
+          server.host,
+          parsedStreamSettings,
+          parsedSettings,
+        );
 
         serverConfigs.push(config);
       }
@@ -433,6 +442,7 @@ export class VpnService {
     | 'skipped-throttled'
     | 'skipped-no-token'
     | 'skipped-no-active-subscription'
+    | 'skipped-no-servers'
   > {
     if (!profile.active || !profile.subscriptionToken) {
       return 'skipped-no-token';
@@ -466,15 +476,21 @@ export class VpnService {
       where: { enabled: true },
     });
 
+    if (!servers.length) {
+      return 'skipped-no-servers';
+    }
+
     const subscriptions: string[] = [];
     let usageDownloadBytes = 0;
     let usageUploadBytes = 0;
+    let successfulServerRefreshes = 0;
 
     for (const server of servers) {
       let inbounds: XuiInbound[];
 
       try {
         inbounds = await this.xuiService.getInbounds(server);
+        successfulServerRefreshes += 1;
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'unknown error';
@@ -492,9 +508,12 @@ export class VpnService {
         const existingClient = inbound.clientStats.find(
           stat => stat.subId === profile.subscriptionToken,
         );
-        const inboundNetwork = this.subscriptionService.parseStreamSettings(
-          inbound.streamSettings,
-        ).network;
+        const parsedStreamSettings =
+          this.subscriptionService.parseStreamSettings(inbound.streamSettings);
+        const parsedSettings = this.subscriptionService.parseSettings(
+          inbound.settings,
+        );
+        const inboundNetwork = parsedStreamSettings.network;
         const flow =
           (inboundNetwork ?? 'tcp') === 'tcp' ? 'xtls-rprx-vision' : '';
 
@@ -530,7 +549,15 @@ export class VpnService {
           usageUploadBytes += Number(existingClient.up ?? 0);
         }
 
-        subscriptions.push(this.buildConfig(inbound, uuid, server.host));
+        subscriptions.push(
+          this.buildConfig(
+            inbound,
+            uuid,
+            server.host,
+            parsedStreamSettings,
+            parsedSettings,
+          ),
+        );
       }
     }
 
@@ -540,6 +567,7 @@ export class VpnService {
     const configsToStore = subscriptions.length
       ? subscriptions
       : fallbackConfigs;
+    const shouldPersistUsage = successfulServerRefreshes > 0;
 
     await this.prisma.vpnProfile.update({
       where: { id: profile.id },
@@ -549,9 +577,13 @@ export class VpnService {
             configs: configsToStore as unknown as Prisma.InputJsonValue,
           }
           : {}),
-        usageDownloadBytes: toNonNegativeBigInt(usageDownloadBytes),
-        usageUploadBytes: toNonNegativeBigInt(usageUploadBytes),
-        lastRefreshedAt: new Date(),
+        ...(shouldPersistUsage
+          ? {
+            usageDownloadBytes: toNonNegativeBigInt(usageDownloadBytes),
+            usageUploadBytes: toNonNegativeBigInt(usageUploadBytes),
+            lastRefreshedAt: new Date(),
+          }
+          : {}),
       },
     });
 
@@ -583,11 +615,15 @@ export class VpnService {
     });
   }
 
-  private buildConfig(inbound: XuiInbound, uuid: string, host: string): string {
-    const streamSettings = this.subscriptionService.parseStreamSettings(
+  private buildConfig(
+    inbound: XuiInbound,
+    uuid: string,
+    host: string,
+    streamSettings = this.subscriptionService.parseStreamSettings(
       inbound.streamSettings,
-    );
-    const settings = this.subscriptionService.parseSettings(inbound.settings);
+    ),
+    settings = this.subscriptionService.parseSettings(inbound.settings),
+  ): string {
     const params = new URLSearchParams();
 
     const clientFlow = settings.clients?.find(
@@ -595,20 +631,12 @@ export class VpnService {
     )?.flow;
     const network = streamSettings.network ?? 'tcp';
     const realitySettings = streamSettings.realitySettings;
+    const xhttpSettings = streamSettings.xhttpSettings;
     const randomShortId = realitySettings?.shortIds?.length
       ? realitySettings.shortIds[
       Math.floor(Math.random() * realitySettings.shortIds.length)
       ]
       : '';
-    const xhttpSettings = (
-      streamSettings as unknown as {
-        xhttpSettings?: {
-          host?: string;
-          mode?: string;
-          path?: string;
-        };
-      }
-    ).xhttpSettings;
 
     params.set('encryption', settings.encryption ?? 'none');
 
