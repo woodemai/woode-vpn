@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Context, Input, Markup, Telegraf } from 'telegraf';
 import QRCode from 'qrcode';
-import { BackendClient } from './backend.js';
+import { BackendClient, CreatePaymentResponse, UserProfileResponse } from './backend.js';
 
 
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -15,8 +15,8 @@ if (!backendBaseUrl) {
   throw new Error('BACKEND_BASE_URL is required');
 }
 
-const backendRequestTimeoutMs = Number(process.env.BACKEND_REQUEST_TIMEOUT_MS ?? '10000');
-const handlerTimeoutMs = Number(process.env.TELEGRAM_HANDLER_TIMEOUT_MS ?? '30000');
+const backendRequestTimeoutMs = 3000;
+const handlerTimeoutMs = 30000;
 
 const backend = new BackendClient({
   baseUrl: backendBaseUrl,
@@ -85,6 +85,63 @@ function formatRemainingTime(endsAt: string | Date): string {
   return `${days} дн ${hours} ч ${minutes} мин`;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function formatBytes(bytes: number): string {
+  const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+  let value = Math.max(0, bytes);
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const rounded = value >= 100 || unitIndex === 0
+    ? Math.round(value).toString()
+    : value.toFixed(1);
+
+  return `${rounded} ${units[unitIndex]}`;
+}
+
+function buildSubscriptionInfoBlock(profile?: UserProfileResponse): string {
+  const profileName = profile?.profileName?.trim() || 'не указано';
+
+  const devicesConnected =
+    typeof profile?.devicesConnected === 'number' ? profile.devicesConnected : 0;
+  const devicesMax =
+    typeof profile?.devicesMax === 'number' ? profile.devicesMax : 0;
+
+  const trafficUsedBytes =
+    typeof profile?.trafficUsedBytes === 'number' ? profile.trafficUsedBytes : 0;
+
+  const trafficLine =
+    typeof profile?.trafficTotalBytes === 'number' && profile.trafficTotalBytes > 0
+      ? `${formatBytes(trafficUsedBytes)}/${formatBytes(profile.trafficTotalBytes)}`
+      : `${formatBytes(trafficUsedBytes)}/∞`;
+
+  const infoLines = [
+    `👤 <b>Профиль:</b> ${escapeHtml(profileName)}`,
+    profile?.endsAt
+      ? `📅 <b>Дата окончания:</b> ${formatMoscowDate(profile.endsAt)}`
+      : '📅 <b>Дата окончания:</b> —',
+    profile?.endsAt
+      ? `⏳ <b>Осталось времени:</b> ${formatRemainingTime(profile.endsAt)}`
+      : '⏳ <b>Осталось времени:</b> —',
+    `📱 <b>Устройства:</b> ${devicesConnected}/${devicesMax}`,
+    `📊 <b>Трафик:</b> ${trafficLine}`,
+  ];
+
+  return `<blockquote>${infoLines.join('\n')}</blockquote>`;
+}
+
 async function renderMediaMessage(
   ctx: Context,
   caption: string,
@@ -132,6 +189,7 @@ async function renderMediaMessage(
 function postActionKeyboard() {
   const rows = [] as ReturnType<typeof Markup.inlineKeyboard>['reply_markup']['inline_keyboard'];
 
+  rows.push([Markup.button.callback('🔄 Продлить подписку', 'MENU_BUY')]);
   rows.push([
     Markup.button.url('📰 Новости', 'https://t.me/woodenews'),
     Markup.button.url('🛟 Поддержка', 'https://t.me/woodemai'),
@@ -157,22 +215,15 @@ function mainMenuKeyboard(hasSubscription: boolean) {
 
 async function buildSubscriptionCaption(
   subscriptionUrl: string,
-  endsAt?: string | Date,
+  profile?: UserProfileResponse,
 ): Promise<string> {
-  const infoLines = endsAt
-    ? [
-      `<b>📅 Дата окончания:</b> ${formatMoscowDate(endsAt)}`,
-      `<b>⏳ Осталось времени:</b> ${formatRemainingTime(endsAt)}`,
-      '',
-    ]
-    : [];
-
   return [
     '<b>WoodeVPN ✨</b>',
     '',
+    buildSubscriptionInfoBlock(profile),
+    '',
     '✅ У вас активна подписка!',
     '',
-    ...infoLines,
     '<b>📲 Как подключить подписку в Happ</b>',
     '',
     '1️⃣ Откройте приложение Happ',
@@ -189,6 +240,19 @@ function buildBuyCaption(): string {
     '<b>Выберите продолжительность подписки:</b>',
     '',
     '30, 90, 180 или 365 дней.',
+  ].join('\n');
+}
+
+function buildPaymentCaption(plan: CreatePaymentResponse): string {
+  const priceRub = (plan.amountCents / 100).toFixed(0);
+
+  return [
+    '<b>WoodeVPN ✨</b>',
+    '',
+    `Вы выбрали пополнение на ${priceRub} ₽`,
+    '',
+    `Период: ${plan.days} дней`,
+    `Устройств: ${plan.deviceLimit}`,
   ].join('\n');
 }
 
@@ -211,6 +275,13 @@ function deviceMenuKeyboard(days: (typeof DAY_PLANS)[number]) {
     [Markup.button.callback(`15 устройств - ${dayPrices[15]} ₽`, `BUY_DEVICES_${days}_15`)],
     [Markup.button.callback('Назад к периодам', 'MENU_BUY')],
     [Markup.button.callback('Назад к меню', 'MENU_MAIN')],
+  ]);
+}
+
+function paymentKeyboard(days: (typeof DAY_PLANS)[number], paymentUrl: string) {
+  return Markup.inlineKeyboard([
+    [Markup.button.url('💳 Пополнить', paymentUrl)],
+    [Markup.button.callback('⬅️ Назад', `BUY_DAYS_${days}`)],
   ]);
 }
 
@@ -237,9 +308,10 @@ function resolvePlanPrice(
 
 async function renderMainMenu(
   ctx: Context,
-  subscriptionUrl?: string,
-  endsAt?: string,
+  profile?: UserProfileResponse,
 ): Promise<void> {
+  const subscriptionUrl = profile?.subscriptionUrl;
+
   if (!subscriptionUrl) {
     await renderMediaMessage(ctx, defaultCaption, {
       keyboard: mainMenuKeyboard(false),
@@ -247,7 +319,7 @@ async function renderMainMenu(
     return;
   }
 
-  const subscriptionCaption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
+  const subscriptionCaption = await buildSubscriptionCaption(subscriptionUrl, profile);
   await renderMediaMessage(ctx, subscriptionCaption, {
     subscriptionUrl,
     keyboard: postActionKeyboard(),
@@ -256,7 +328,11 @@ async function renderMainMenu(
 
 
 async function renderGotDemoSubscriptionMenu(ctx: Context, endsAt: Date, subscriptionUrl: string) {
-  const caption = await buildSubscriptionCaption(subscriptionUrl, endsAt);
+  const caption = await buildSubscriptionCaption(subscriptionUrl, {
+    hasActiveSubscription: true,
+    subscriptionUrl,
+    endsAt: endsAt.toISOString(),
+  });
   const captionWithExpiry = [
     `Активна до: ${endsAt.toLocaleString('ru-RU')}`,
     '',
@@ -316,7 +392,7 @@ async function renderConfig(ctx: Context): Promise<void> {
     return;
   }
 
-  await renderMediaMessage(ctx, await buildSubscriptionCaption(profile.subscriptionUrl, profile.endsAt), {
+  await renderMediaMessage(ctx, await buildSubscriptionCaption(profile.subscriptionUrl, profile), {
     subscriptionUrl: profile.subscriptionUrl,
     keyboard: postActionKeyboard(),
   });
@@ -331,25 +407,15 @@ async function processBuyByPlan(
 ): Promise<void> {
   const userId = await registerAndGetUserId(ctx);
   const priceRub = resolvePlanPrice(days, devices);
-  const result = await backend.confirmPayment({
+  const result = await backend.createPayment({
     userId,
     days,
     deviceLimit: devices,
     amountCents: priceRub * 100,
   });
 
-  const subscriptionCaption = await buildSubscriptionCaption(result.subscriptionUrl, result.endsAt);
-  const caption = [
-    `Подписка активирована на ${days} дней (${devices} устройств).`,
-    `Стоимость: ${priceRub} ₽`,
-    `Активна до: ${new Date(result.endsAt).toLocaleString('ru-RU')}`,
-    '',
-    subscriptionCaption,
-  ].join('\n');
-
-  await renderMediaMessage(ctx, caption, {
-    subscriptionUrl: result.subscriptionUrl,
-    keyboard: postActionKeyboard(),
+  await renderMediaMessage(ctx, buildPaymentCaption(result), {
+    keyboard: paymentKeyboard(days, result.paymentUrl),
   });
 }
 
@@ -396,7 +462,7 @@ bot.start(async (ctx) => {
   await safeHandleCallback(ctx, async () => {
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
+    await renderMainMenu(ctx, profile);
   });
 });
 
@@ -414,7 +480,7 @@ bot.on('callback_query', async (ctx) => {
     if (data === 'MENU_MAIN') {
       const userId = await registerAndGetUserId(ctx);
       const profile = await backend.getProfile(userId);
-      await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
+      await renderMainMenu(ctx, profile);
       return;
     }
 
@@ -479,7 +545,7 @@ bot.on('callback_query', async (ctx) => {
 
     const userId = await registerAndGetUserId(ctx);
     const profile = await backend.getProfile(userId);
-    await renderMainMenu(ctx, profile.subscriptionUrl, profile.endsAt);
+    await renderMainMenu(ctx, profile);
   });
 });
 

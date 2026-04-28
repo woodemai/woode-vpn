@@ -14,15 +14,11 @@ services:
       retries: 15
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     networks:
       - backend
 
   app:
-    build:
-      context: ./woode-vpn-backend
-      dockerfile: Dockerfile
+    image: ghcr.io/woodemai/woode-vpn-app:latest
     container_name: woode-vpn-app
     restart: unless-stopped
     init: true
@@ -32,21 +28,12 @@ services:
       PORT: ${PORT:-3000}
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://your-domain.com}
       APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
-      IS_DEV: ${IS_DEV:-false}
-      XUI_REQUEST_TIMEOUT_MS: ${XUI_REQUEST_TIMEOUT_MS:-5000}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+      METRICS_API_KEY: ${METRICS_API_KEY:-}
       YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID:-123456}
       YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY:-test_xxx_or_live_xxx}
-      XUI_SERVERS_JSON: ${XUI_SERVERS_JSON:-[{"id":"de-1","country":"DE","baseUrl":"https://de-panel.example.com","username":"admin","password":"password","publicHost":"de-vpn.example.com","inboundIds":[1],"enabled":true},{"id":"nl-1","country":"NL","baseUrl":"https://nl-panel.example.com","username":"admin","password":"password","publicHost":"nl-vpn.example.com","inboundIds":[2],"enabled":true}]}
-      SUBSCRIPTION_PLAIN_RESPONSE: ${SUBSCRIPTION_PLAIN_RESPONSE:-true}
-      SUBSCRIPTION_TITLE: ${SUBSCRIPTION_TITLE:-Woode VPN}
-      SUBSCRIPTION_SUPPORT_URL: ${SUBSCRIPTION_SUPPORT_URL:-}
-      SUBSCRIPTION_PROFILE_URL: ${SUBSCRIPTION_PROFILE_URL:-}
-      SUBSCRIPTION_ANNOUNCE: ${SUBSCRIPTION_ANNOUNCE:-}
-      SUBSCRIPTION_UPDATE_INTERVAL_HOURS: ${SUBSCRIPTION_UPDATE_INTERVAL_HOURS:-1}
-      SUBSCRIPTION_TOTAL_BYTES: ${SUBSCRIPTION_TOTAL_BYTES:-0}
-      SUBSCRIPTION_REFRESH_FROM_XUI: ${SUBSCRIPTION_REFRESH_FROM_XUI:-true}
-      TELEGRAM_NOTIFICATIONS_ENABLED: ${TELEGRAM_NOTIFICATIONS_ENABLED:-false}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TZ: Europe/Moscow
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,33 +43,47 @@ services:
       timeout: 5s
       retries: 12
     stop_grace_period: 20s
-    ports:
-      - "3000:3000"
     networks:
       - backend
 
   telegram-bot:
-    build:
-      context: ./woode-vpn-telegram-bot
-      dockerfile: Dockerfile
+    image: ghcr.io/woodemai/woode-vpn-bot:latest
     container_name: woode-vpn-telegram-bot
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       BACKEND_BASE_URL: ${BACKEND_BASE_URL:-http://app:3000}
-      BACKEND_REQUEST_TIMEOUT_MS: ${BACKEND_REQUEST_TIMEOUT_MS:-10000}
-      TELEGRAM_HANDLER_TIMEOUT_MS: ${TELEGRAM_HANDLER_TIMEOUT_MS:-30000}
-      BUY_DEFAULT_MONTHS: ${BUY_DEFAULT_MONTHS:-1}
-      BUY_DEFAULT_COUNTRY: ${BUY_DEFAULT_COUNTRY:-NL}
       NODE_ENV: production
+      TZ: Europe/Moscow
     depends_on:
       app:
         condition: service_healthy
     networks:
       - backend
 
+  caddy:
+    image: caddy:2-alpine
+    container_name: woode-vpn-caddy
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-your-domain.com}
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./woode-vpn-backend/docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - backend
+
 volumes:
   postgres_data:
+  caddy_data:
+  caddy_config:
 
 
 networks:

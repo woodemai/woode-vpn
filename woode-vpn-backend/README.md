@@ -1,6 +1,7 @@
 # Woode VPN Backend
 
 NestJS backend for Telegram bot or web frontend where user:
+
 - creates profile,
 - pays subscription,
 - receives one combined VLESS subscription URL built from multiple 3x-ui servers.
@@ -38,28 +39,6 @@ PORT=3000
 APP_PUBLIC_BASE_URL="http://localhost:3000"
 YOOKASSA_SHOP_ID="123456"
 YOOKASSA_SECRET_KEY="live_xxx_or_test_xxx"
-XUI_SERVERS_JSON='[
-  {
-    "id": "de-1",
-    "country": "DE",
-    "baseUrl": "https://de-panel.example.com",
-    "username": "admin",
-    "password": "password",
-    "publicHost": "de-vpn.example.com",
-    "inboundIds": [1],
-    "enabled": true
-  },
-  {
-    "id": "nl-1",
-    "country": "NL",
-    "baseUrl": "https://nl-panel.example.com",
-    "username": "admin",
-    "password": "password",
-    "publicHost": "nl-vpn.example.com",
-    "inboundIds": [2],
-    "enabled": true
-  }
-]'
 ```
 
 ## Install and Run
@@ -76,11 +55,13 @@ API base URL: `http://localhost:3000/api`
 ## Docker (Recommended for VPS)
 
 This project can run fully through Docker Compose:
+
 - PostgreSQL in a container
 - NestJS app in a container
 - Prisma migrations run automatically on app startup
 
 There are 2 compose modes:
+
 - `docker-compose.yml` - app + postgres, port `3000` exposed (good for local/dev server)
 - `docker-compose.vps.yml` - app + postgres + Caddy with automatic HTTPS on `80/443` (recommended for VPS)
 
@@ -90,7 +71,7 @@ There are 2 compose modes:
 cp .env.docker.example .env.docker
 ```
 
-Fill real values in `.env.docker` (`YOOKASSA_*`, `XUI_SERVERS_JSON`, passwords).
+Fill real values in `.env.docker` (`YOOKASSA_*`, passwords).
 
 ### 2. Start services
 
@@ -173,10 +154,11 @@ Content-Type: application/json
 ```
 
 Response includes:
+
 - `subscriptionUrl` (single URL to give user)
 - `subscriptionText` (raw merged VLESS lines)
 
-2.1 Real YooKassa webhook
+  2.1 Real YooKassa webhook
 
 Configure YooKassa notification URL:
 
@@ -187,6 +169,7 @@ https://your-domain.com/api/payments/webhooks/yookassa
 Backend verifies payment directly via YooKassa API (`/v3/payments/{id}`) using `YOOKASSA_SHOP_ID` and `YOOKASSA_SECRET_KEY`, then issues subscription.
 
 Webhook expects `metadata` in payment object:
+
 - `userId` (required)
 - `months` (optional, default `1`)
 - `country` (optional)

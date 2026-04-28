@@ -15,9 +15,9 @@ enum SubscriptionStatus {
 
 model User {
   id            Int            @id @default(autoincrement())
-  externalId    String?        @unique
-  telegramName  String?
-  email         String?        @unique
+  externalId    String         @unique @default(cuid())
+  telegramName  String         @default(cuid())
+  isBlocked     Boolean        @default(false)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   subscriptions Subscription[]
@@ -25,31 +25,41 @@ model User {
 }
 
 model Subscription {
-  id          Int                @id @default(autoincrement())
-  userId      Int
-  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status      SubscriptionStatus @default(ACTIVE)
-  startsAt    DateTime
-  endsAt      DateTime
-  paymentId   String?
-  amountCents Int?
-  createdAt   DateTime           @default(now())
-  updatedAt   DateTime           @updatedAt
+  id                      Int                @id @default(autoincrement())
+  userId                  Int
+  user                    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status                  SubscriptionStatus @default(ACTIVE)
+  startsAt                DateTime
+  endsAt                  DateTime
+  paymentId               String?
+  amountCents             Int?
+  notified3DaysBefore     Boolean            @default(false)
+  notified1DayBefore      Boolean            @default(false)
+  notifiedAfterExpiration Boolean            @default(false)
+  createdAt               DateTime           @default(now())
+  updatedAt               DateTime           @updatedAt
 
   @@index([userId, status])
+  @@index([userId, status, startsAt, endsAt], map: "subscription_active_window_lookup_idx")
+  @@index([status, endsAt])
+  @@index([status, endsAt, notified3DaysBefore])
+  @@index([status, endsAt, notified1DayBefore])
+  @@index([status, endsAt, notifiedAfterExpiration])
 }
 
 model VpnProfile {
-  id                Int              @id @default(autoincrement())
-  userId            Int              @unique
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  subscriptionToken String           @unique
-  configs           Json?
-  clientMappings    Json?
-  hwidBindings      VpnHwidBinding[]
-  active            Boolean          @default(true)
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  id                 Int              @id @default(autoincrement())
+  userId             Int              @unique
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptionToken  String           @unique
+  configs            Json?
+  usageUploadBytes   BigInt           @default(0)
+  usageDownloadBytes BigInt           @default(0)
+  lastRefreshedAt    DateTime?
+  hwidBindings       VpnHwidBinding[]
+  active             Boolean          @default(true)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 }
 
 model VpnHwidBinding {
@@ -61,4 +71,30 @@ model VpnHwidBinding {
   profile     VpnProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, hwid])
+}
+
+model SubscriptionConfig {
+  id                  Int      @id @default(1)
+  title               String
+  supportUrl          String?
+  profileUrl          String?
+  announce            String
+  updateIntervalHours Int
+  updatedAt           DateTime @updatedAt
+}
+
+model XuiServer {
+  id          Int     @id @default(autoincrement())
+  host        String  @unique
+  port        Int
+  webBasePath String
+  name        String
+  country     String
+  username    String
+  password    String
+  publicHost  String
+  enabled     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
