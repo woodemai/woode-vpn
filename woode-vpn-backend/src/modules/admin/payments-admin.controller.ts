@@ -19,20 +19,34 @@ import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
 export class PaymentsAdminController {
   private readonly logger = new Logger(PaymentsAdminController.name);
 
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(private readonly paymentsService: PaymentsService) { }
 
   @Post('confirm')
   @ApiOperation({
     summary: 'Manual payment confirmation (webhook recovery)',
     description:
-      'Use this endpoint to recover payment processing when payment provider webhook was not delivered. Reuses existing confirmPayment logic with idempotency by paymentId.',
+      'Admin endpoint to manually confirm payment when YooKassa webhook was not delivered. Idempotent by paymentId. Same result as webhook confirmation - activates subscription. Requires valid admin API key in X-API-Key header.',
   })
   @ApiBody({ type: AdminConfirmPaymentDto })
-  @ApiOkResponse({ description: 'Payment confirmed or already processed' })
-  @ApiBadRequestResponse({
-    description: 'Validation error or inconsistent payment data',
+  @ApiOkResponse({
+    description: 'Payment confirmed or already processed',
+    example: {
+      subscriptionId: 42,
+      userId: 123,
+      status: 'ACTIVE',
+      startsAt: '2026-04-28T11:35:10.000Z',
+      endsAt: '2026-05-28T11:35:10.000Z',
+      deviceLimit: 5,
+      alreadyProcessed: false,
+    },
   })
-  @ApiUnauthorizedResponse({ description: 'Missing or invalid ADMIN_API_KEY' })
+  @ApiBadRequestResponse({
+    description:
+      'Validation error or inconsistent payment data (invalid userId, missing paymentId)',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'Missing or invalid X-API-Key header',
+  })
   async confirmPayment(@Body() dto: AdminConfirmPaymentDto) {
     this.logger.log(
       `manual payment confirm requested: userId=${dto.userId}, paymentId=${dto.paymentId}`,

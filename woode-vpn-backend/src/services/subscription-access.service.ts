@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../db/prisma.service';
+import { SubscriptionService } from './subscription.service';
 import { XuiService } from './xui.service';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class SubscriptionAccessService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly subscriptionService: SubscriptionService,
     private readonly xuiService: XuiService,
   ) { }
 
@@ -59,12 +61,11 @@ export class SubscriptionAccessService {
 
         const nextActiveSubscription = await this.prisma.subscription.findFirst(
           {
-            where: {
-              userId: subscription.userId,
-              status: SubscriptionStatus.ACTIVE,
-              endsAt: { gt: now },
-            },
-            orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
+            where: this.subscriptionService.getNextActiveSubscriptionWhere(
+              subscription.userId,
+              now,
+            ),
+            orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
           },
         );
 

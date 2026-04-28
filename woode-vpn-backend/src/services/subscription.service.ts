@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma, SubscriptionStatus } from '@prisma/client';
 
 interface StreamSettings {
   network?: string;
@@ -75,6 +76,36 @@ type InboundSettings = {
 
 @Injectable()
 export class SubscriptionService {
+  getActiveSubscriptionWhere(
+    userId?: number,
+    now: Date = new Date(),
+  ): Prisma.SubscriptionWhereInput {
+    return {
+      ...(typeof userId === 'number' ? { userId } : {}),
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: { lte: now },
+      endsAt: { gt: now },
+    };
+  }
+
+  getNextActiveSubscriptionWhere(
+    userId?: number,
+    now: Date = new Date(),
+  ): Prisma.SubscriptionWhereInput {
+    return {
+      ...(typeof userId === 'number' ? { userId } : {}),
+      status: SubscriptionStatus.ACTIVE,
+      startsAt: { gte: now },
+      endsAt: { gt: now },
+    };
+  }
+
+  getActiveSubscriptionOrderBy():
+    | Prisma.SubscriptionOrderByWithRelationInput
+    | Prisma.SubscriptionOrderByWithRelationInput[] {
+    return [{ endsAt: 'desc' }, { id: 'desc' }];
+  }
+
   encodeBase64Subscription(raw: string): string {
     return Buffer.from(raw, 'utf8').toString('base64');
   }

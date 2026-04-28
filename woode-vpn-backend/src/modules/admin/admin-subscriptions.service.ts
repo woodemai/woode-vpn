@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
+import { SubscriptionService } from '../../services/subscription.service';
 import { TelegramNotifierService } from '../../services/telegram-notifier.service';
 import { VpnService } from '../vpn/vpn.service';
 
@@ -15,9 +16,10 @@ export class AdminSubscriptionsService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly subscriptionService: SubscriptionService,
     private readonly vpnService: VpnService,
     private readonly telegramNotifierService: TelegramNotifierService,
-  ) {}
+  ) { }
 
   async cancelLastSubscription(subscriptionId: number): Promise<{
     success: boolean;
@@ -25,6 +27,7 @@ export class AdminSubscriptionsService {
     userId: number;
     status: 'CANCELED';
   }> {
+    const now = new Date();
     const subscription = await this.prisma.subscription.findUnique({
       where: { id: subscriptionId },
       include: { user: true },
@@ -39,7 +42,7 @@ export class AdminSubscriptionsService {
         userId: subscription.userId,
         status: SubscriptionStatus.ACTIVE,
       },
-      orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!latestSubscription || latestSubscription.id !== subscription.id) {
@@ -63,12 +66,11 @@ export class AdminSubscriptionsService {
     });
 
     const nextActiveSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId: subscription.userId,
-        status: SubscriptionStatus.ACTIVE,
-        endsAt: { gt: new Date() },
-      },
-      orderBy: [{ endsAt: 'desc' }, { id: 'desc' }],
+      where: this.subscriptionService.getNextActiveSubscriptionWhere(
+        subscription.userId,
+        now,
+      ),
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!nextActiveSubscription) {
@@ -98,7 +100,10 @@ export class AdminSubscriptionsService {
   private buildCancellationReplyMarkup(): Record<string, unknown> {
     return {
       inline_keyboard: [
-        [{ text: '⚙️ Моя подписка', callback_data: 'ACTION_CONFIG' },{ text: '🔄 Продлить подписку', callback_data: 'MENU_BUY' }],
+        [
+          { text: '⚙️ Моя подписка', callback_data: 'ACTION_CONFIG' },
+          { text: '🔄 Продлить подписку', callback_data: 'MENU_BUY' },
+        ],
         [
           { text: '📰 Новости', url: 'https://t.me/woodenews' },
           { text: '🛟 Поддержка', url: 'https://t.me/woodemai' },
@@ -142,8 +147,8 @@ export class AdminSubscriptionsService {
       externalId,
       periodMessage.join('\n'),
       {
-        replyMarkup: this.buildCancellationReplyMarkup()
-      }
+        replyMarkup: this.buildCancellationReplyMarkup(),
+      },
     );
 
     this.logger.log(

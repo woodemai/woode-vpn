@@ -1,13 +1,15 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../db/prisma.module';
-import { PaymentsModule } from '../payments/payments.module';
 import { ServicesModule } from '../../services/services.module';
+import { PaymentsModule } from '../payments/payments.module';
 import { VpnModule } from '../vpn/vpn.module';
-import { SubscriptionConfigController } from './subscription-config.controller';
-import { PaymentsAdminController } from './payments-admin.controller';
-import { SubscriptionsAdminController } from './subscriptions-admin.controller';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
 import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
+import { PaymentsAdminController } from './payments-admin.controller';
+import { SubscriptionConfigController } from './subscription-config.controller';
+import { SubscriptionsAdminController } from './subscriptions-admin.controller';
+import { UsersAdminController } from './users-admin.controller';
+import { AdminUsersService } from './users-admin.service';
 
 @Module({
   imports: [ServicesModule, PaymentsModule, VpnModule, PrismaModule],
@@ -15,7 +17,8 @@ import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
     SubscriptionConfigController,
     PaymentsAdminController,
     SubscriptionsAdminController,
+    UsersAdminController,
   ],
-  providers: [AdminApiKeyGuard, AdminSubscriptionsService],
+  providers: [AdminApiKeyGuard, AdminSubscriptionsService, AdminUsersService],
 })
-export class AdminModule {}
+export class AdminModule { }

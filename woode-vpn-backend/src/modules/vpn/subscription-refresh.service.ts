@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../../db/prisma.service';
+import { SubscriptionService } from '../../services/subscription.service';
 import { VpnService } from './vpn.service';
 
 @Injectable()
@@ -10,12 +10,14 @@ export class SubscriptionRefreshService {
 
     constructor(
         private readonly prisma: PrismaService,
+        private readonly subscriptionService: SubscriptionService,
         private readonly vpnService: VpnService,
     ) { }
 
     @Cron(CronExpression.EVERY_10_MINUTES, { timeZone: 'Europe/Moscow' })
     async refreshSubscriptions(): Promise<void> {
         const startedAt = Date.now();
+        const now = new Date();
 
         const profiles = await this.prisma.vpnProfile.findMany({
             where: {
@@ -23,10 +25,10 @@ export class SubscriptionRefreshService {
                 user: {
                     subscriptions: {
                         some: {
-                            status: SubscriptionStatus.ACTIVE,
-                            endsAt: {
-                                gt: new Date(),
-                            },
+                            ...this.subscriptionService.getActiveSubscriptionWhere(
+                                undefined,
+                                now,
+                            ),
                         },
                     },
                 },

@@ -4,6 +4,7 @@ import {
   ApiBadRequestResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiParam,
   ApiQuery,
   ApiTags,
 } from '@nestjs/swagger';
@@ -20,15 +21,30 @@ export class PublicSubscriptionController {
 
   @Get('sub/:token')
   @ApiOperation({
-    summary: 'Get plain or encoded subscription by public token',
+    summary: 'Get subscription profile (public endpoint)',
+    description:
+      'Retrieve subscription profile with user info and node list. Supports HWID-based device limiting. Returns plain text with subscription metadata headers and V2Ray/Clash nodes. Cache-control headers ensure no caching.',
+  })
+  @ApiParam({
+    name: 'token',
+    type: String,
+    description: 'Subscription token (from subscription URL)',
+    example: 'token_abc123_def456',
   })
   @ApiQuery({
     name: 'hwid',
     required: false,
-    description: 'Client hardware id',
+    description:
+      'Client hardware ID for device limiting. Can also be provided via X-HWID or X-Device-ID headers.',
+    example: 'device_id_1234567890',
   })
-  @ApiOkResponse({ description: 'Subscription payload returned' })
-  @ApiBadRequestResponse({ description: 'Subscription cannot be served' })
+  @ApiOkResponse({
+    description: 'Subscription profile returned with metadata headers',
+  })
+  @ApiBadRequestResponse({
+    description:
+      'Subscription cannot be served - token invalid, expired, or device limit exceeded',
+  })
   async getSubscription(
     @Param('token') token: string,
     @Res({ passthrough: true }) response: Response,

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma, SubscriptionStatus, User, VpnProfile } from '@prisma/client';
+import { Prisma, User, VpnProfile } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { customAlphabet } from 'nanoid';
 import { slugify } from 'transliteration';
@@ -134,14 +134,8 @@ export class VpnService {
       `user-${userId}`;
 
     const activeSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-        endsAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: { endsAt: 'desc' },
+      where: this.subscriptionService.getActiveSubscriptionWhere(userId),
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!activeSubscription) {
@@ -317,14 +311,10 @@ export class VpnService {
     }
 
     const activeSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId: profile.userId,
-        status: SubscriptionStatus.ACTIVE,
-        endsAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: { endsAt: 'desc' },
+      where: this.subscriptionService.getActiveSubscriptionWhere(
+        profile.userId,
+      ),
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!activeSubscription) {
@@ -456,14 +446,10 @@ export class VpnService {
     }
 
     const activeSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId: profile.userId,
-        status: SubscriptionStatus.ACTIVE,
-        endsAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: { endsAt: 'desc' },
+      where: this.subscriptionService.getActiveSubscriptionWhere(
+        profile.userId,
+      ),
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!activeSubscription) {
@@ -677,14 +663,8 @@ export class VpnService {
     });
 
     const activeSubscription = await this.prisma.subscription.findFirst({
-      where: {
-        userId,
-        status: SubscriptionStatus.ACTIVE,
-        endsAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: { endsAt: 'desc' },
+      where: this.subscriptionService.getActiveSubscriptionWhere(userId),
+      orderBy: this.subscriptionService.getActiveSubscriptionOrderBy(),
     });
 
     if (!profile || !activeSubscription) {

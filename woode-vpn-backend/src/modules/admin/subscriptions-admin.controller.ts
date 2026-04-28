@@ -15,8 +15,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
 import { AdminSubscriptionsService } from './admin-subscriptions.service';
+import { AdminApiKeyGuard } from './guards/admin-api-key.guard';
 
 @ApiTags('Admin')
 @ApiSecurity('x-api-key')
@@ -25,15 +25,20 @@ import { AdminSubscriptionsService } from './admin-subscriptions.service';
 export class SubscriptionsAdminController {
   constructor(
     private readonly adminSubscriptionsService: AdminSubscriptionsService,
-  ) {}
+  ) { }
 
   @Delete(':id')
   @ApiOperation({
-    summary: 'Cancel last subscription for user',
+    summary: 'Cancel subscription',
     description:
-      'Cancels only the latest user subscription (by endsAt), synchronizes VPN access and sends Telegram notification.',
+      'Cancel only the latest active subscription for a user. Cannot cancel subscriptions from the middle of the subscription list if later subscriptions exist. Automatically disables VPN access if no active subscriptions remain and sends Telegram notification.',
   })
-  @ApiParam({ name: 'id', type: Number, description: 'Subscription id' })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    description: 'Subscription ID to cancel',
+    example: 101,
+  })
   @ApiOkResponse({
     description: 'Subscription canceled successfully',
     schema: {
@@ -46,9 +51,10 @@ export class SubscriptionsAdminController {
     },
   })
   @ApiBadRequestResponse({
-    description: 'ONLY_LAST_SUBSCRIPTION_ALLOWED | SUBSCRIPTION_NOT_ACTIVE',
+    description:
+      'Cannot cancel subscription - either not the latest one or already inactive',
   })
-  @ApiNotFoundResponse({ description: 'NOT_FOUND' })
+  @ApiNotFoundResponse({ description: 'Subscription not found' })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid ADMIN_API_KEY' })
   async cancelSubscription(@Param('id', ParseIntPipe) id: number) {
     return this.adminSubscriptionsService.cancelLastSubscription(id);
