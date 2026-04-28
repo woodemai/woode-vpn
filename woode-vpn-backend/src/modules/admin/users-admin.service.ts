@@ -86,7 +86,7 @@ export class AdminUsersService {
     async block(id: number) {
         const user = await this.prisma.user.findUnique({ where: { id } });
         if (!user) throw new NotFoundException('User not found');
-        if ((user as any).isBlocked)
+        if (user.isBlocked)
             throw new BadRequestException('User already blocked');
 
         // disable vpn access and mark blocked
@@ -106,7 +106,7 @@ export class AdminUsersService {
     async unblock(id: number) {
         const user = await this.prisma.user.findUnique({ where: { id } });
         if (!user) throw new NotFoundException('User not found');
-        if (!(user as any).isBlocked)
+        if (!user.isBlocked)
             throw new BadRequestException('User is not blocked');
 
         await this.prisma.user.update({
