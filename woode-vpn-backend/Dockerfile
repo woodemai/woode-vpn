@@ -18,19 +18,19 @@ RUN pnpm build
 FROM base AS runner
 WORKDIR /app
 
+RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser
+
 ENV NODE_ENV=production
 ENV PORT=3000
 
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/src/logo.jpg ./logo.jpg
-COPY package.json pnpm-lock.yaml ./
-COPY docker/entrypoint.sh ./docker/entrypoint.sh
+COPY --from=build --chown=appuser:appgroup /app/node_modules ./node_modules
+COPY --from=build --chown=appuser:appgroup /app/dist ./dist
+COPY --from=build --chown=appuser:appgroup /app/prisma ./prisma
+COPY --from=build --chown=appuser:appgroup /app/src/logo.jpg ./logo.jpg
+COPY --chown=appuser:appgroup package.json pnpm-lock.yaml ./
+COPY --chown=appuser:appgroup docker/entrypoint.sh ./docker/entrypoint.sh
 
-RUN groupadd --system appgroup && useradd --system --gid appgroup --create-home appuser \
-    && chown -R appuser:appgroup /app \
-    && chmod +x /app/docker/entrypoint.sh
+RUN chmod +x /app/docker/entrypoint.sh
 
 USER appuser
 
